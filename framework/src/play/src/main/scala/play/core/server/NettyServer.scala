@@ -10,6 +10,7 @@ import org.jboss.netty.handler.stream._
 import org.jboss.netty.handler.codec.http.HttpHeaders._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Values._
+import org.jboss.netty.handler.ssl.SslHandler
 
 import org.jboss.netty.channel.group._
 import java.util.concurrent._
@@ -58,9 +59,72 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
     }
   }
 
-  bootstrap.setPipelineFactory(new DefaultPipelineFactory)
+
+  class SecurePipelineFactory extends DefaultPipelineFactory with Ssl {
+    override def getPipeline = {
+      val engine = createSslContext.createSSLEngine
+      engine.setUseClientMode(false)
+      val pipe = super.getPipeline
+      System.out.println("in getPipline")
+      pipe.addFirst("ssl",new SslHandler(engine))
+      pipe
+    }
+  }
+  //  bootstrap.setPipelineFactory(new DefaultPipelineFactory)
+  bootstrap.setPipelineFactory(new SecurePipelineFactory)
+
+
+  /** Provides security dependencies */
+  trait Security {
+    import javax.net.ssl.SSLContext
+    /** create an SSLContext from which an SSLEngine can be created */
+    def createSslContext: SSLContext
+  }
+
+  /** Provides basic ssl support.
+   * A keyStore and keyStorePassword are required and default to using the system property values
+   * "jetty.ssl.keyStore" and "jetty.ssl.keyStorePassword" respectively. */
+  trait Ssl extends Security {
+    import java.io.FileInputStream
+    import java.security.{KeyStore, SecureRandom}
+    import javax.net.ssl.{KeyManager, KeyManagerFactory, SSLContext}
+
+    def requiredProperty(name: String) = System.getProperty(name) match {
+      case null => { val msg="required system property not set %s" format name
+        System.out.println(msg)
+        sys.error(msg)
+      }
+      case prop => prop
+    }
+
+    lazy val keyStore = requiredProperty("netty.ssl.keyStore")
+    lazy val keyStorePassword = requiredProperty("netty.ssl.keyStorePassword")
+
+    def keyManagers = {
+      val keys = KeyStore.getInstance(System.getProperty(
+        "netty.ssl.keyStoreType", KeyStore.getDefaultType))
+      IO.use(new FileInputStream(keyStore)) { in=>
+        System.out.println("fetching file "+keyStore+" with password "+keyStorePassword)
+        keys.load(in, keyStorePassword.toCharArray)
+      }
+      val keyManFact = KeyManagerFactory.getInstance(System.getProperty(
+        "netty.ssl.keyStoreAlgorithm", KeyManagerFactory.getDefaultAlgorithm))
+      keyManFact.init(keys, keyStorePassword.toCharArray)
+      keyManFact.getKeyManagers
+    }
+
+    def createSslContext = {
+      val context = SSLContext.getInstance("TLS")
+      initSslContext(context)
+      context
+    }
+
+    def initSslContext(ctx: SSLContext) =
+      ctx.init(keyManagers, null, new SecureRandom)
+  }
 
   allChannels.add(bootstrap.bind(new java.net.InetSocketAddress(address, port)))
+
 
   mode match {
     case Mode.Test =>
@@ -177,3 +241,15 @@ object NettyServer {
   }
 
 }
+
+/* should be part of major library somewhere?*/
+trait IO {
+  /** Manage the usage of some object that must be closed after use */
+  def use[C <: { def close() }, T](c: C)(f: C => T): T = try {
+    f(c)
+  } finally {
+    c.close()
+  }
+}
+
+object IO extends IO

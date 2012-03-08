@@ -1,4 +1,4 @@
-#! /usr/bin/env sh
+#! /usr/bin/env sh -x
 
 PRG="$0"
 while [ -h "$PRG" ] ; do
@@ -54,5 +54,6 @@ if [ -f conf/application.conf ]; then
   fi
   
 else
-  java -Dsbt.ivy.home=$dir/repository -Dplay.home=$dir/framework -Dsbt.boot.properties=$dir/framework/sbt/play.boot.properties -jar $dir/framework/sbt/sbt-launch.jar "$@"
+  echo we are here!
+  java ${PLAY_PARAMS} -Dsbt.ivy.home=$dir/repository -Dplay.home=$dir/framework -Dsbt.boot.properties=$dir/framework/sbt/play.boot.properties -Dnetty.ssl.keyStoreType=JKS -Dsun.security.ssl.allowUnsafeRenegotiation=true -Dsun.security.ssl.allowLegacyHelloMessages=true -Dnetty.ssl.keyStore=/Users/hjs/Programming/w3.org/hg/read-write-web/src/test/resources/KEYSTORE.jks -Dnetty.ssl.keyStorePassword=secret -Dnetty.ssl.keyAlias="selfsigned" -jar $dir/framework/sbt/sbt-launch.jar "$@"
 fi
