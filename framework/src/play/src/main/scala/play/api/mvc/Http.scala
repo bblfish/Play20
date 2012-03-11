@@ -5,6 +5,7 @@ package play.api.mvc {
   import play.api.libs.Crypto
 
   import scala.annotation._
+  import java.security.cert.Certificate
 
   /**
    * The HTTP request header. Note that it doesn’t contain the request body yet.
@@ -36,6 +37,13 @@ package play.api.mvc {
      * The HTTP headers.
      */
     def headers: Headers
+
+
+    /**
+     * The X509 client certs
+     * @return a certificate chain
+     */
+    def certs: IndexedSeq[Certificate]
 
     /**
      * The HTTP host (domain, optionally port)
@@ -117,6 +125,7 @@ package play.api.mvc {
       def uri = self.uri
       def path = self.path
       def method = self.method
+      def certs = self.certs
       def queryString = self.queryString
       def headers = self.headers
       lazy val body = f(self.body)
@@ -131,6 +140,7 @@ package play.api.mvc {
     def body = request.body
     def headers = request.headers
     def queryString = request.queryString
+    def certs = request.certs
     def path = request.path
     def uri = request.uri
     def method = request.method

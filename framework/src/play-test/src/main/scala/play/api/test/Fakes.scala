@@ -58,6 +58,7 @@ case class FakeRequest[A](method: String, uri: String, headers: FakeHeaders, bod
     copy(body = AnyContentAsFormUrlEncoded(data.groupBy(_._1).mapValues(_.map(_._2))))
   }
 
+  def certs = IndexedSeq.empty
 }
 
 /**

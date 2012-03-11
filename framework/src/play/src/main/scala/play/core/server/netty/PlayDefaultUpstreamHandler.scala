@@ -23,8 +23,15 @@ import play.api.libs.iteratee.Input._
 import play.api.libs.concurrent._
 
 import scala.collection.JavaConverters._
+import scala.collection.immutable
+import java.security.cert.Certificate
+
+object PlayDefaultUpstreamHandler {
+  val logger = Logger("play")
+}
 
 private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: DefaultChannelGroup) extends SimpleChannelUpstreamHandler with Helpers with WebSocketHandler with RequestBodyHandler {
+  import PlayDefaultUpstreamHandler.logger
 
   override def exceptionCaught(ctx: ChannelHandlerContext, e: ExceptionEvent) {
     Logger.trace("Exception caught in Netty", e.getCause)
@@ -35,7 +42,55 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
     allChannels.add(e.getChannel)
   }
 
+  val emptySeq: immutable.IndexedSeq[Certificate] = Nil.toIndexedSeq
   override def messageReceived(ctx: ChannelHandlerContext, e: MessageEvent) {
+
+    trait certs { req: RequestHeader =>
+      import scala.Either
+
+      def certs: IndexedSeq[Certificate] = {
+        import org.jboss.netty.handler.ssl.SslHandler
+        import scala.util.control.Exception._
+        import javax.net.ssl.SSLPeerUnverifiedException
+        val sslCatcher = catching(classOf[SSLPeerUnverifiedException])
+
+        val res: Option[IndexedSeq[Certificate]] = Option(ctx.getPipeline.get(classOf[SslHandler])).flatMap { sslh =>
+          sslCatcher.opt {
+            logger.trace("checking for certs in ssl session")
+            sslh.getEngine.getSession.getPeerCertificates.toIndexedSeq[Certificate]
+          } orElse {
+            logger.trace("attempting to request certs from client")
+            //need to make use of the certificate sessions in the setup process
+            //see http://stackoverflow.com/questions/8731157/netty-https-tls-session-duration-why-is-renegotiation-needed
+            sslh.setEnableRenegotiation(true); //does this have to be done on every request?
+            req.headers.get("User-Agent") match {
+              case Some(agent) if needAuth(agent) => sslh.getEngine.setNeedClientAuth(true)
+              case _ => sslh.getEngine.setWantClientAuth(true)
+            }
+            val future = sslh.handshake()
+            future.await(30000) //that's certainly way too long.
+            if (future.isDone && future.isSuccess)
+              sslCatcher opt (sslh.getEngine.getSession.getPeerCertificates.toIndexedSeq)
+            else
+              None
+          }
+         }
+        res getOrElse emptySeq
+      }
+
+      /**
+       *  Some agents do not send client certificates unless required. This is a problem for them, as it ends up breaking the
+       *  connection for those agents if the client does not have a certificate...
+       *
+       *  It would be useful if this could be updated by server from time to  time from a file on the internet,
+       *  so that changes to browsers could update server behavior
+       *
+       */
+      def needAuth(agent: String): Boolean =
+        (agent contains "Java")  | (agent contains "AppleWebKit")  |  (agent contains "Opera")
+
+    }
+
     e.getMessage match {
 
       case nettyHttpRequest: HttpRequest =>
@@ -55,7 +110,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
 
         //mapping netty request to Play's
 
-        val requestHeader = new RequestHeader {
+        val requestHeader = new RequestHeader with certs {
           def uri = nettyHttpRequest.getUri
           def path = nettyUri.getPath
           def method = nettyHttpRequest.getMethod.getName
@@ -282,7 +337,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
                 .flatMap(it => it.run)
                 .map {
                   _.right.map(b =>
-                    new Request[action.BODY_CONTENT] {
+                    new Request[action.BODY_CONTENT] with certs {
                       def uri = nettyHttpRequest.getUri
                       def path = nettyUri.getPath
                       def method = nettyHttpRequest.getMethod.getName

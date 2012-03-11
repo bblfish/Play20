@@ -25,6 +25,9 @@ import play.api.libs.concurrent._
 
 import scala.collection.JavaConverters._
 import netty._
+import java.security.cert.X509Certificate
+import java.net.Socket
+import javax.net.ssl.{SSLEngine, X509TrustManager}
 
 /**
  * provides a stopable Server
@@ -36,7 +39,10 @@ trait ServerWithStop {
 /**
  * creates a Server implementation based Netty
  */
-class NettyServer(appProvider: ApplicationProvider, port: Int, address: String = "0.0.0.0", val mode: Mode.Mode = Mode.Prod) extends Server with ServerWithStop {
+class NettyServer(appProvider: ApplicationProvider, port: Int, address: String = "0.0.0.0", val mode: Mode.Mode = Mode.Prod)
+  extends Server with ServerWithStop {
+
+  import NettyServer.logger
 
   def applicationProvider = appProvider
 
@@ -55,6 +61,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
       newPipeline.addLast("decoder", new HttpRequestDecoder(4096, 8192, 8192))
       newPipeline.addLast("encoder", new HttpResponseEncoder())
       newPipeline.addLast("handler", defaultUpStreamHandler)
+      logger.trace("got pipeline from default pipeline factory")
       newPipeline
     }
   }
@@ -65,14 +72,27 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
       val engine = createSslContext.createSSLEngine
       engine.setUseClientMode(false)
       val pipe = super.getPipeline
-      System.out.println("in getPipline")
       pipe.addFirst("ssl",new SslHandler(engine))
+      logger.trace("got pipeline from Secure pipeline factory")
       pipe
     }
   }
-  //  bootstrap.setPipelineFactory(new DefaultPipelineFactory)
-  bootstrap.setPipelineFactory(new SecurePipelineFactory)
 
+
+  class WebIDPipelineFactory extends DefaultPipelineFactory with NoCACheck_UserWebIDLater_Ssl {
+    override def getPipeline = {
+      val engine = createSslContext.createSSLEngine
+      engine.setUseClientMode(false)
+      val pipe = super.getPipeline
+      pipe.addFirst("ssl",new SslHandler(engine))
+      logger.trace("got pipeline from WebID pipeline factory")
+      pipe
+    }
+  }
+
+  //bootstrap.setPipelineFactory(new DefaultPipelineFactory)
+  // bootstrap.setPipelineFactory(new SecurePipelineFactory)
+  bootstrap.setPipelineFactory( new WebIDPipelineFactory() )
 
   /** Provides security dependencies */
   trait Security {
@@ -100,7 +120,9 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
     lazy val keyStore = requiredProperty("netty.ssl.keyStore")
     lazy val keyStorePassword = requiredProperty("netty.ssl.keyStorePassword")
 
-    def keyManagers = {
+    //note: changing keystore requires restarting the server
+    val keyManagers = {
+      logger.trace("loading key managers")
       val keys = KeyStore.getInstance(System.getProperty(
         "netty.ssl.keyStoreType", KeyStore.getDefaultType))
       IO.use(new FileInputStream(keyStore)) { in=>
@@ -113,22 +135,71 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
       keyManFact.getKeyManagers
     }
 
+    lazy val context = {
+      val res = SSLContext.getInstance("TLS")
+      initSslContext(res)
+      res
+    }
+
     def createSslContext = {
-      val context = SSLContext.getInstance("TLS")
-      initSslContext(context)
       context
     }
 
-    def initSslContext(ctx: SSLContext) =
+    def initSslContext(ctx: SSLContext) = {
+      logger.trace("initialising ssl context")
       ctx.init(keyManagers, null, new SecureRandom)
+    }
   }
+
+
+  /**
+   * accepts all ssl client certificates - as long as the tls handshake crypto works of course,
+   * and use WebID to verify the identities inside later.
+   *
+   * Ie: we don't care about who signed the certificate. All we know when the certificate is received
+   * is that the client knew the private key of the given public key. It is the job of other layers,
+   * to follow through on claims made in the certificate.
+   */
+  trait NoCACheck_UserWebIDLater_Ssl extends Ssl {
+
+    import java.security.SecureRandom
+    import javax.net.ssl.{SSLContext, TrustManager}
+
+    val nullArray = Array[X509Certificate]()
+
+    val trustManagers = Array[TrustManager](new X509TrustManager {
+
+//  for Java 7 use X509ExtendedTrustManager and these methods
+//      def checkClientTrusted(chain: Array[X509Certificate], authType: String, socket: Socket) {}
+//
+//      def checkClientTrusted(chain: Array[X509Certificate], authType: String, engine: SSLEngine) {}
+
+//      def checkServerTrusted(chain: Array[X509Certificate], authType: String, socket: Socket) {}
+//
+//      def checkServerTrusted(chain: Array[X509Certificate], authType: String, engine: SSLEngine) {}
+
+      def checkClientTrusted(x509Certificates: Array[X509Certificate], s: String) {}
+
+      def checkServerTrusted(x509Certificates: Array[X509Certificate], s: String) {}
+
+      def getAcceptedIssuers() = nullArray
+    })
+
+
+    override def initSslContext(ctx: SSLContext) = {
+      logger.trace("initialising ssl context")
+      ctx.init(keyManagers, trustManagers, new SecureRandom)
+    }
+
+  }
+
 
   allChannels.add(bootstrap.bind(new java.net.InetSocketAddress(address, port)))
 
 
   mode match {
     case Mode.Test =>
-    case _ => Logger("play").info("Listening for HTTP on port %s...".format(port))
+    case _ => logger.info("Listening for HTTP on port %s...".format(port))
   }
 
   override def stop() {
@@ -136,18 +207,18 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
     try {
       Play.stop()
     } catch {
-      case e => Logger("play").error("Error while stopping the application", e)
+      case e => logger.error("Error while stopping the application", e)
     }
 
     try {
       super.stop()
     } catch {
-      case e => Logger("play").error("Error while stopping akka", e)
+      case e => logger.error("Error while stopping akka", e)
     }
 
     mode match {
       case Mode.Test =>
-      case _ => Logger("play").info("Stopping server...")
+      case _ => logger.info("Stopping server...")
     }
 
     allChannels.close().awaitUninterruptibly()
@@ -158,13 +229,13 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
 }
 
 /**
- * bootstraps Play application with a NettyServer backened
+ * bootstraps Play application with a NettyServer backend
  */
 object NettyServer {
 
   import java.io._
   import java.net._
-
+  val logger = Logger("play")
   /**
    * creates a NettyServer based on the application represented by applicationPath
    * @param applicationPath path to application
