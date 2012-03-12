@@ -22,6 +22,7 @@ export PLAY_PARAMS="-Dnetty.ssl.keyStoreType=JKS -Dnetty.ssl.keyStore=$PLAY_HOME
 ``` 
 
 where 
+
  * `netty.ssl.keyStore` is pointing to a keystore containing your CA signed certificate and  
  * `netty.ssl.keyStoreType` is the type of that keystore, Java Key Store usually (JKS)
  * `netty.ssl.keyStorePassword` is the password for the keystore 
