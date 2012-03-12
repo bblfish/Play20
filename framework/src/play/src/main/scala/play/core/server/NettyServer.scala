@@ -82,14 +82,17 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
   val defaultUpStreamHandler = new PlayDefaultUpstreamHandler(this, allChannels)
 
   class DefaultPipelineFactory extends ChannelPipelineFactory {
-    def getPipeline = {
-      val newPipeline = pipeline()
-      newPipeline.addLast("decoder", new HttpRequestDecoder(4096, 8192, 8192))
-      newPipeline.addLast("encoder", new HttpResponseEncoder())
-      newPipeline.addLast("handler", defaultUpStreamHandler)
+
+    def complete(pipeline: ChannelPipeline) =  {
+      pipeline.addLast("decoder", new HttpRequestDecoder(4096, 8192, 8192))
+      pipeline.addLast("encoder", new HttpResponseEncoder())
+      pipeline.addLast("handler", defaultUpStreamHandler)
       logger.trace("got pipeline from default pipeline factory")
-      newPipeline
+      pipeline
     }
+
+    def getPipeline = complete(pipeline())
+
   }
 
 
@@ -97,10 +100,10 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
     override def getPipeline = {
       val engine = sslContext.createSSLEngine
       engine.setUseClientMode(false)
-      val pipe = super.getPipeline
-      pipe.addFirst("ssl",new SslHandler(engine))
+      val pipe = pipeline()
+      pipe.addLast("ssl",new SslHandler(engine))
       logger.trace("got pipeline from Secure pipeline factory")
-      pipe
+      complete(pipe)
     }
   }
 
@@ -109,10 +112,10 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
     override def getPipeline = {
       val engine = sslContext.createSSLEngine
       engine.setUseClientMode(false)
-      val pipe = super.getPipeline
-      pipe.addFirst("ssl",new SslHandler(engine))
+      val pipe = pipeline()
+      pipe.addLast("ssl",new SslHandler(engine))
       logger.trace("got pipeline from WebID pipeline factory")
-      pipe
+      complete(pipe)
     }
   }
 
