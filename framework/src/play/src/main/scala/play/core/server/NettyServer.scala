@@ -1,3 +1,21 @@
+/**
+ * Merger of code
+ *  - by Nathan Hamblen / Doug Tangren Copyright (c) 2010  under an MIT licence
+ *    from http://github.com/unfiltered project
+ *    http://opensource.org/licenses/MIT
+ *
+ *  - Typesafe ( http://typesafe.com ) Copyright (c) 2012 under an Apache 2.0 licence
+ *    from the Play 2.0 framework
+ *
+ * Merger done by Henry Story ( http://bblfish.net ) putting the licence under Apache 2.0
+ * under the copyright of both contributors above with respect to their contribution to the
+ * merger. IE. if transformations of this code end up removing code initially belonging to
+ * any of the contributing authors the claim to copyright of that author will in proportion
+ * be reduced.
+ *
+ * Apache 2.0 Licence found at http://www.apache.org/licenses/LICENSE-2.0.
+ */
+
 package play.core.server
 
 import org.jboss.netty.buffer._
@@ -30,7 +48,7 @@ import java.net.Socket
 import javax.net.ssl.{SSLEngine, X509TrustManager}
 
 /**
- * provides a stopable Server
+ * provides a stoppable Server
  */
 trait ServerWithStop {
   def stop(): Unit
@@ -43,6 +61,14 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
   extends Server with ServerWithStop {
 
   import NettyServer.logger
+
+  // in Order to be receptive to DNS changes the DNS cache properties below must be set
+  // please tune them to see what works best
+  // this is important for WebID protocols: sometimes people have their webid on a server whose dns is
+  // set dynamically (dyndns) and so this will allow the server to update the DNS cache.
+  java.security.Security.setProperty("networkaddress.cache.ttl" , ""+60*10);
+  java.security.Security.setProperty("networkaddress.cache.negative.ttl",""+60*3) //3 minutes
+
 
   def applicationProvider = appProvider
 
@@ -69,7 +95,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
 
   class SecurePipelineFactory extends DefaultPipelineFactory with Ssl {
     override def getPipeline = {
-      val engine = createSslContext.createSSLEngine
+      val engine = sslContext.createSSLEngine
       engine.setUseClientMode(false)
       val pipe = super.getPipeline
       pipe.addFirst("ssl",new SslHandler(engine))
@@ -81,7 +107,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
 
   class WebIDPipelineFactory extends DefaultPipelineFactory with NoCACheck_UserWebIDLater_Ssl {
     override def getPipeline = {
-      val engine = createSslContext.createSSLEngine
+      val engine = sslContext.createSSLEngine
       engine.setUseClientMode(false)
       val pipe = super.getPipeline
       pipe.addFirst("ssl",new SslHandler(engine))
@@ -97,8 +123,19 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
   /** Provides security dependencies */
   trait Security {
     import javax.net.ssl.SSLContext
-    /** create an SSLContext from which an SSLEngine can be created */
-    def createSslContext: SSLContext
+
+    /** create an SSLContext from which an SSLEngine can be created.
+     *  Should be implemented as a lazy val so that these don't created on
+     *  each connection.
+     **/
+    lazy val sslContext = {
+      val context = SSLContext.getInstance("TLS")
+      initSslContext(context)
+      context
+    }
+
+    protected  def initSslContext(ctx: SSLContext): Unit
+
   }
 
   /** Provides basic ssl support.
@@ -121,12 +158,12 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
     lazy val keyStorePassword = requiredProperty("netty.ssl.keyStorePassword")
 
     //note: changing keystore requires restarting the server
-    val keyManagers = {
-      logger.trace("loading key managers")
+    lazy val keyManagers = {
+      logger.info("loading key managers")
       val keys = KeyStore.getInstance(System.getProperty(
         "netty.ssl.keyStoreType", KeyStore.getDefaultType))
       IO.use(new FileInputStream(keyStore)) { in=>
-        System.out.println("fetching file "+keyStore+" with password "+keyStorePassword)
+        logger.trace("fetching file "+keyStore+" with password "+keyStorePassword)
         keys.load(in, keyStorePassword.toCharArray)
       }
       val keyManFact = KeyManagerFactory.getInstance(System.getProperty(
@@ -135,18 +172,9 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
       keyManFact.getKeyManagers
     }
 
-    lazy val context = {
-      val res = SSLContext.getInstance("TLS")
-      initSslContext(res)
-      res
-    }
 
-    def createSslContext = {
-      context
-    }
-
-    def initSslContext(ctx: SSLContext) = {
-      logger.trace("initialising ssl context")
+    protected def initSslContext(ctx: SSLContext) {
+      logger.info("initialising ssl context")
       ctx.init(keyManagers, null, new SecureRandom)
     }
   }
@@ -186,8 +214,8 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
     })
 
 
-    override def initSslContext(ctx: SSLContext) = {
-      logger.trace("initialising ssl context")
+    override protected def initSslContext(ctx: SSLContext) {
+      logger.info("initialising ssl context in NoCACheck_UserWebIDLater_Ssl")
       ctx.init(keyManagers, trustManagers, new SecureRandom)
     }
 

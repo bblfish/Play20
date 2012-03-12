@@ -1,3 +1,37 @@
+# TLS Branch of Play 2.0
+
+This version of Play 2.0 will run with TLS enabled (https://... ) only. 
+There is a bug report associated with this branch [[issue 215 | https://play.lighthouseapp.com/projects/82401-play-20/tickets/215-tls-https-support-in-play-20]]
+
+The code is set up to by default allows the server to ask
+the client for an X509 certificate in guise of authentication, by calling `play.api.mvc.Request.certs` method.
+
+```scala
+object Application extends Controller {
+  def index = Action { request =>
+    Ok(views.html.index("Your cert chain size is "+request.certs.size))
+  }
+}
+```
+This can then be used for [[WebID authentication|http://webid.info/spec/]] ( [[video|http://webid.info/]] ). 
+
+It needs to be started with the PLAY_PARAMS environmental variable set something like the following
+
+```bash
+export PLAY_PARAMS="-Dnetty.ssl.keyStoreType=JKS -Dnetty.ssl.keyStore=$PLAY_HOME/TestKEYSTORE.jks -Dnetty.ssl.keyStorePassword=secret -Dnetty.ssl.keyAlias=selfsigned -Dsun.security.ssl.allowUnsafeRenegotiation=true -Dsun.security.ssl.allowLegacyHelloMessages=true" 
+``` 
+
+where 
+* `netty.ssl.keyStore` is pointing to a keystore containing your CA signed certificate and  
+* `netty.ssl.keyStoreType` is the type of that keystore, Java Key Store usually (JKS)
+* `netty.ssl.keyStorePassword` is the password for the keystore 
+* `netty.ssl.keyAlias` is the alias of the key and certificate to be used by the server 
+* `sun.security.ssl.allowUnsafeRenegotiation` allows maximum browser compatibility with a trade off in security, see [Transport Layer Security (TLS) Renegotiation Issue|  http://docs.oracle.com/javase/7/docs/technotes/guides/security/jsse/JSSERefGuide.html#tlsRenegotiation
+* `sun.security.ssl.allowLegacyHelloMessages` bypasses a security fix, see [Transport Layer Security (TLS) Renegotiation Issue|  http://docs.oracle.com/javase/7/docs/technotes/guides/security/jsse/JSSERefGuide.html#tlsRenegotiation
+
+The `TestKEYSTORE.jks` should not be used in production environments as its private key is now public, and it is self signed.
+
+
 # Play 2.0 
 
 Play 2.0 is a high productivity Java and Scala Web application framework, integrating all components and API needed for modern Web application development. 
