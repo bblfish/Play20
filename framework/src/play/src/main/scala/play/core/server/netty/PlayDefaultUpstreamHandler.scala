@@ -34,7 +34,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
   import PlayDefaultUpstreamHandler.logger
 
   override def exceptionCaught(ctx: ChannelHandlerContext, e: ExceptionEvent) {
-    logger.trace("Exception caught in Netty", e.getCause)
+    logger.warn("Exception caught in Netty", e.getCause)
     e.getChannel.close()
   }
 
@@ -56,10 +56,10 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
 
         val res: Option[IndexedSeq[Certificate]] = Option(ctx.getPipeline.get(classOf[SslHandler])).flatMap { sslh =>
           sslCatcher.opt {
-            logger.trace("checking for certs in ssl session")
+            logger.info("checking for certs in ssl session")
             sslh.getEngine.getSession.getPeerCertificates.toIndexedSeq[Certificate]
           } orElse {
-            logger.trace("attempting to request certs from client")
+            logger.info("attempting to request certs from client")
             //need to make use of the certificate sessions in the setup process
             //see http://stackoverflow.com/questions/8731157/netty-https-tls-session-duration-why-is-renegotiation-needed
             sslh.setEnableRenegotiation(true); //does this have to be done on every request?
@@ -68,7 +68,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
               case _ => sslh.getEngine.setWantClientAuth(true)
             }
             val future = sslh.handshake()
-            future.await(30000) //that's certainly way too long.
+            future.await(30000) //todo: that's certainly way too long. can this be done asynchronously?
             if (future.isDone && future.isSuccess)
               sslCatcher opt (sslh.getEngine.getSession.getPeerCertificates.toIndexedSeq)
             else

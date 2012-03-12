@@ -59,8 +59,8 @@ trait ServerWithStop {
  */
 class NettyServer(appProvider: ApplicationProvider, port: Int, address: String = "0.0.0.0", val mode: Mode.Mode = Mode.Prod)
   extends Server with ServerWithStop {
+  val logger = Logger.logger
 
-  import NettyServer.logger
 
   // in Order to be receptive to DNS changes the DNS cache properties below must be set
   // please tune them to see what works best
@@ -87,7 +87,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
       pipeline.addLast("decoder", new HttpRequestDecoder(4096, 8192, 8192))
       pipeline.addLast("encoder", new HttpResponseEncoder())
       pipeline.addLast("handler", defaultUpStreamHandler)
-      logger.trace("got pipeline from default pipeline factory")
+      logger.trace("completing pilpeline with request, response and default-up-stream-handler")
       pipeline
     }
 
@@ -108,7 +108,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
   }
 
 
-  class WebIDPipelineFactory extends DefaultPipelineFactory with NoCACheck_UserWebIDLater_Ssl {
+  class WebIDPipelineFactory extends DefaultPipelineFactory with NoCACheck_UseWebIDLater_Ssl {
     override def getPipeline = {
       val engine = sslContext.createSSLEngine
       engine.setUseClientMode(false)
@@ -163,10 +163,8 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
     //note: changing keystore requires restarting the server
     lazy val keyManagers = {
       logger.info("loading key managers")
-      val keys = KeyStore.getInstance(System.getProperty(
-        "netty.ssl.keyStoreType", KeyStore.getDefaultType))
+      val keys = KeyStore.getInstance(System.getProperty("netty.ssl.keyStoreType", KeyStore.getDefaultType))
       IO.use(new FileInputStream(keyStore)) { in=>
-        logger.trace("fetching file "+keyStore+" with password "+keyStorePassword)
         keys.load(in, keyStorePassword.toCharArray)
       }
       val keyManFact = KeyManagerFactory.getInstance(System.getProperty(
@@ -191,7 +189,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
    * is that the client knew the private key of the given public key. It is the job of other layers,
    * to follow through on claims made in the certificate.
    */
-  trait NoCACheck_UserWebIDLater_Ssl extends Ssl {
+  trait NoCACheck_UseWebIDLater_Ssl extends Ssl {
 
     import java.security.SecureRandom
     import javax.net.ssl.{SSLContext, TrustManager}
@@ -266,7 +264,6 @@ object NettyServer {
 
   import java.io._
   import java.net._
-  val logger = Logger("play")
   /**
    * creates a NettyServer based on the application represented by applicationPath
    * @param applicationPath path to application
