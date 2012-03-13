@@ -13,7 +13,18 @@ object Application extends Controller {
   }
 }
 ```
-This can then be used for [WebID authentication](http://webid.info/spec/) ([video](http://webid.info/)). 
+This can then be used for [WebID authentication](http://webid.info/spec/) ([video](http://webid.info/)),
+To request the client certificate just call `request.certs` as in the following code:
+
+```scala
+def index = Action { request =>
+    Ok(views.html.index("Your cert chain size is "+request.certs.size))
+  }
+```
+
+This will look up the client certificate in the TLS session, or ask the client if none is 
+available. This allows you to have large parts of your site TLS protected but only ask the client
+for his identity when needed.
 
 It needs to be started with the PLAY_PARAMS environmental variable set something like the following
 
@@ -34,7 +45,7 @@ The `TestKEYSTORE.jks` should not be used in production environments as its priv
 
 > Note there seems to be a bug on OSX Java 7 where the server freezes up completely. It works on Solaris Java7 though.
 
-> Check the [[NOTICE.md]] file for updates to the licence
+> Check the [NOTICE.md] file for updates to the licence
 
 
 # Play 2.0 
