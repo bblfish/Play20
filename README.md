@@ -4,7 +4,7 @@ This version of Play 2.0 will run with TLS enabled (https://... ) only.
 There is a bug report associated with this branch [issue 215](https://play.lighthouseapp.com/projects/82401-play-20/tickets/215-tls-https-support-in-play-20)
 
 The code is set up to by default allows the server to ask
-the client for an X509 certificate in guise of authentication, by calling `play.api.mvc.Request.certs` method.
+the client for an X509 certificate based authentication, by calling `play.api.mvc.Request.certs` method.
 
 ```scala
 object Application extends Controller {
@@ -14,22 +14,17 @@ object Application extends Controller {
 }
 ```
 This can then be used for [WebID authentication](http://webid.info/spec/) ([video](http://webid.info/)),
-To request the client certificate just call `request.certs` as in the following code:
 
-```scala
-def index = Action { request =>
-    Ok(views.html.index("Your cert chain size is "+request.certs.size))
-  }
-```
-
-This will look up the client certificate in the TLS session, or ask the client if none is 
+The server willlook up the client certificate in the TLS session, or ask the client if none is 
 available. This allows you to have large parts of your site TLS protected but only ask the client
-for his identity when needed.
+for his identity when the resources requested is protected .
 
-It needs to be started with the PLAY_PARAMS environmental variable set something like the following
+To get authentication to work the server must be started with the PLAY_PARAMS environmental variable set something like the following
 
 ```bash
-export PLAY_PARAMS="-Dnetty.ssl.keyStoreType=JKS -Dnetty.ssl.keyStore=$PLAY_HOME/TestKEYSTORE.jks -Dnetty.ssl.keyStorePassword=secret -Dnetty.ssl.keyAlias=selfsigned -Dsun.security.ssl.allowUnsafeRenegotiation=true -Dsun.security.ssl.allowLegacyHelloMessages=true" 
+export PLAY_PARAMS="-Dnetty.ssl.keyStoreType=JKS -Dnetty.ssl.keyStore=$PLAY_HOME/TestKEYSTORE.jks"
+export PLAY_PARAMS="$PLAY_PARAMS -Dnetty.ssl.keyStorePassword=secret -Dnetty.ssl.keyAlias=selfsigned"
+export PLAY_PARAMS="$PLAY_PARAMS -Dsun.security.ssl.allowUnsafeRenegotiation=true -Dsun.security.ssl.allowLegacyHelloMessages=true" 
 ``` 
 
 where 
@@ -45,7 +40,7 @@ The `TestKEYSTORE.jks` should not be used in production environments as its priv
 
 > Note there seems to be a bug on OSX Java 7 where the server freezes up completely. It works on Solaris Java7 though.
 
-> Check the [NOTICE.md] file for updates to the licence
+> Check the (NOTICE.md)[NOTICE.md] file for updates to the licence
 
 
 # Play 2.0 
