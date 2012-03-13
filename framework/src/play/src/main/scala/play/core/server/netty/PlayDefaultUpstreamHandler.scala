@@ -139,7 +139,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
                 logger.trace("Sending simple result: " + r)
 
                 // Set response headers
-                headers.foreach {
+                headers.filterNot(_ == (CONTENT_LENGTH,"-1")).foreach {
 
                   // Fix a bug for Set-Cookie header. 
                   // Multiple cookies could be merged in a single header
