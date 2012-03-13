@@ -40,7 +40,7 @@ The `TestKEYSTORE.jks` should not be used in production environments as its priv
 
 > Note there seems to be a bug on OSX Java 7 where the server freezes up completely. It works on Solaris Java7 though.
 
-> Check the [NOTICE.md](NOTICE.md) file for updates to the licence
+> Check the [NOTICE.md](/bblfish/Play20/blob/TLS_support/NOTICE.md) file for updates to the licence
 
 
 # Play 2.0 
