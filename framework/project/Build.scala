@@ -25,6 +25,23 @@ object PlayBuild extends Build {
         )
     ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*)
 
+
+    lazy val WebIDProject = Project(
+      "WebID",
+      file("src/webid"),
+      settings = buildSettings ++ Seq(
+        libraryDependencies := templatesDependencies ++ webIdDependencies,
+//        publishTo := Some(playRepository),
+//        publishArtifact in(Compile, packageDoc) := false,
+//        publishArtifact in(Compile, packageSrc) := false,
+        unmanagedJars in Compile += compilerJar,
+        scalacOptions ++= Seq("-Xlint", "-deprecation", "-unchecked", "-encoding", "utf8"),
+        javacOptions ++= Seq("-encoding", "utf8"),
+        resolvers += typesafe,
+        resolvers += bblfish
+      )
+    ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*).dependsOn(PlayProject)
+
     lazy val AnormProject = Project(
         "Anorm",
         file("src/anorm"),
@@ -50,7 +67,7 @@ object PlayBuild extends Build {
             publishArtifact in (Compile, packageDoc) := false,
             publishArtifact in (Compile, packageSrc) := false,
             resolvers += typesafe,
-            sourceGenerators in Compile <+= (dependencyClasspath in TemplatesProject in Runtime, packageBin in TemplatesProject in Compile, scalaSource in Compile, sourceManaged in Compile, streams) map ScalaTemplates,
+          sourceGenerators in Compile <+= (dependencyClasspath in TemplatesProject in Runtime, packageBin in TemplatesProject in Compile, scalaSource in Compile, sourceManaged in Compile, streams) map ScalaTemplates,
             compile in (Compile) <<= PostCompile
         )
     ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*).dependsOn(TemplatesProject, AnormProject)
@@ -163,6 +180,8 @@ object PlayBuild extends Build {
         
         val typesafeReleases = "Typesafe Releases Repository" at "http://repo.typesafe.com/typesafe/maven-releases/"
         val typesafeSnapshot = "Typesafe Snapshots Repository" at "http://repo.typesafe.com/typesafe/maven-snapshots/"
+        val bblfish = "BabelFish Repository" at "http://bblfish.net/work/repo/snapshots/"
+
         val playRepository = if (buildVersion.endsWith("SNAPSHOT")) typesafeSnapshot else typesafeReleases
         
         val typesafeIvyReleases = Resolver.url("Typesafe Ivy Releases Repository", url("http://repo.typesafe.com/typesafe/ivy-releases/"))(Resolver.ivyStylePatterns) 
@@ -183,7 +202,6 @@ object PlayBuild extends Build {
             "com.typesafe.akka"                 %    "akka-actor"               %   "2.0",
             "com.typesafe.akka"                 %    "akka-slf4j"               %   "2.0",
             "com.google.guava"                  %    "guava"                    %   "10.0.1",
-            
             ("org.avaje"                        %    "ebean"                    %   "2.7.3" notTransitive())
               .exclude("javax.persistence", "persistence-api")
             ,
@@ -299,6 +317,10 @@ object PlayBuild extends Build {
             "com.novocode"                      %    "junit-interface"          %   "0.8",
             
             "org.fluentlenium"     %    "fluentlenium-festassert"             %   "0.5.6"
+        )
+
+        val webIdDependencies = Seq(
+          "org.w3"                            %%   "jena"                     %   "0.1-SNAPSHOT"
         )
 
     }
