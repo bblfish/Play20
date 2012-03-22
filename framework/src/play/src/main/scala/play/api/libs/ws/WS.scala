@@ -15,6 +15,7 @@ import com.ning.http.client.{
   HttpResponseStatus,
   Response => AHCResponse
 }
+import java.util.concurrent.Executor
 
 /**
  * Asynchronous API to to query web services, as an http client.
@@ -178,11 +179,10 @@ object WS {
 
     private[libs] def executeStream[A](consumer: ResponseHeaders => Iteratee[Array[Byte], A]): Promise[Iteratee[Array[Byte], A]] = {
       import com.ning.http.client.AsyncHandler
-      var doneOrError = false
       calculator.map(_.sign(this))
 
       var statusCode = 0
-      var iterateeP: STMPromise[Iteratee[Array[Byte], A]] = null
+      var iterateeP = new STMPromise[Iteratee[Array[Byte], A]]
       var iteratee: Iteratee[Array[Byte], A] = null
 
       WS.client.executeRequest(this.build(), new AsyncHandler[Unit]() {
@@ -200,31 +200,25 @@ object WS {
         }
 
         override def onBodyPartReceived(bodyPart: HttpResponseBodyPart) = {
-          if (!doneOrError) {
-            val nextIteratee = iteratee.pureFlatFold(
+            var continue = STATE.CONTINUE
+            System.out.println("in on body part received")
+            iteratee = iteratee.pureFlatFold(
               // DONE
               (a, e) => {
-                val it = Done(a, e)
-                iterateeP.redeem(it)
-                it
+                continue = STATE.ABORT
+                Done(a, e)
               },
 
               // CONTINUE
-              k => {
-                k(El(bodyPart.getBodyPartBytes()))
-              },
+              k => k(El(bodyPart.getBodyPartBytes())),
 
               // ERROR
               (e, input) => {
-                val it = Error(e, input)
-                iterateeP.redeem(it)
-                it
-              })
-            STATE.CONTINUE
-          } else {
-            iteratee = null
-            STATE.ABORT
-          }
+                continue = STATE.ABORT
+                Error(e, input)
+              }
+             )
+            continue
         }
 
         override def onCompleted() = {
