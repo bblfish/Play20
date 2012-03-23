@@ -162,13 +162,9 @@ object GraphCache  {
              Iteratee.fold[Array[Byte], PipedOutputStream](out) {
                (out, bytes) => { out.write(bytes); out }
              }.map(finished => {
-               try {
-                 out.flush(); out.close();
-               } catch {
-                 case e => log.warn("exception caught closing stream with " + loc, e)
-               }
-               blockingIO.await.get
-             }) //todo: should be settable
+               try { out.flush(); out.close() } catch { case e: IOException => log.warn("exception caught closing stream with " + loc, e) }
+               blockingIO.await(5000).get       //todo: should be settable (but very likely much shorter than 5 seconds, since io succeeded)
+             })
            }
          }
          graphIteratee
