@@ -26,21 +26,6 @@ object PlayBuild extends Build {
     ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*)
 
 
-    lazy val WebIDProject = Project(
-      "WebID",
-      file("src/webid"),
-      settings = buildSettings ++ Seq(
-        libraryDependencies := templatesDependencies ++ webIdDependencies,
-//        publishTo := Some(playRepository),
-//        publishArtifact in(Compile, packageDoc) := false,
-//        publishArtifact in(Compile, packageSrc) := false,
-        unmanagedJars in Compile += compilerJar,
-        scalacOptions ++= Seq("-Xlint", "-deprecation", "-unchecked", "-encoding", "utf8"),
-        javacOptions ++= Seq("-encoding", "utf8"),
-        resolvers += typesafe,
-        resolvers += bblfish
-      )
-    ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*).dependsOn(PlayProject)
 
     lazy val AnormProject = Project(
         "Anorm",
@@ -120,7 +105,21 @@ object PlayBuild extends Build {
       )
     ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*)
 
-    val Root = Project(
+  lazy val WebIDProject = Project(
+    "WebID",
+    file("src/webid"),
+    settings = buildSettings ++ Seq(
+      libraryDependencies := webIdDependencies,
+      unmanagedJars in Compile += compilerJar,
+      scalacOptions ++= Seq("-Xlint", "-deprecation", "-unchecked", "-encoding", "utf8"),
+      javacOptions ++= Seq("-encoding", "utf8"),
+      resolvers ++= Seq(typesafe, bblfish)
+    )
+  ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*).
+    dependsOn(PlayTestProject)
+
+
+  val Root = Project(
         "Root",
         file("."),
         settings = buildSettings ++ Seq(
@@ -133,8 +132,9 @@ object PlayBuild extends Build {
             publish <<= (publish in PlayProject, publish in TemplatesProject, publish in AnormProject, publish in SbtPluginProject, publish in ConsoleProject, publish in PlayTestProject) map { (_,_,_,_,_,_) => },
             publishLocal <<= (publishLocal in PlayProject, publishLocal in TemplatesProject, publishLocal in AnormProject, publishLocal in SbtPluginProject, publishLocal in ConsoleProject, publishLocal in PlayTestProject) map { (_,_,_,_,_,_) => }
         )
-    ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*)
-     .dependsOn(PlayProject).aggregate(AnormProject, TemplatesProject, PlayProject, SbtPluginProject, ConsoleProject, PlayTestProject)
+    ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*).
+      dependsOn(PlayProject).
+      aggregate(AnormProject, TemplatesProject, PlayProject, SbtPluginProject, ConsoleProject, PlayTestProject)
 
     object BuildSettings {
 

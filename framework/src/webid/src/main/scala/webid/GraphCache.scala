@@ -38,6 +38,7 @@ import scalaz.{Scalaz, Validation}
 //import org.w3.readwriteweb.Lang._
 //import org.w3.readwriteweb.{RDFXML, Lang, CacheControl, ResourceManager}
 //import org.w3.readwriteweb.util._
+import patch.AsyncJenaParser
 import play.api.libs.ws.WS
 import com.hp.hpl.jena.graph.Graph
 import play.api.libs.iteratee.{Input, Iteratee}
@@ -45,10 +46,10 @@ import com.hp.hpl.jena.rdf.model.{ModelFactory, Model}
 import com.fasterxml.aalto.stax.InputFactoryImpl
 import com.fasterxml.aalto.{AsyncInputFeeder, AsyncXMLStreamReader}
 import com.hp.hpl.jena.rdf.arp.SAX2Model
-import patch.AsyncJenaParser
 //import akka.actor.IO.Done
 import java.io._
 import play.api.libs.concurrent.{PurePromise, Akka, Promise}
+import org.w3.readwriteweb.util.SpyInputStream
 
 
 /**
@@ -65,7 +66,7 @@ object GraphCache  {
   import webid.Logger.log
   import play.api.Play.current
 
-  //use shellac's rdfa parser
+//use shellac's rdfa parser
 //  new net.rootdev.javardfa.jena.RDFaReader  //import rdfa parser
 
 
@@ -113,8 +114,8 @@ object GraphCache  {
 //    def createDirectory(model: Model) =  throw new MethodNotSupportedException("not implemented")
 //  }
 
-  def getUrl(u: URL) = {
 
+  def getUrl(u: URL): Promise[Graph] = {
     // note we prefer rdf/xml and turtle over html, as html does not always contain rdfa, and we prefer those over n3,
     // as we don't have a full n3 parser. Better would be to have a list of available parsers for whatever rdf framework is
     // installed (some claim to do n3 when they only really do turtle)
@@ -148,16 +149,26 @@ object GraphCache  {
                graph
            }.map(_.model.getGraph)
            //case TURTLE => use my turtle parser in some way similar as above
-           case mime => {
+           case otherMime => {  //blocking parsers
              val in = new PipedInputStream()
              val out = new PipedOutputStream(in)
              val blockingIO = Akka.future {
-               // we need to run these blocking parsers in their own threads
-               modelFromInputStream(in, loc, mime).fold(throw _,_.getGraph)
+               try {
+                 modelFromInputStream(in, loc, otherMime).fold(throw _,_.getGraph)
+               } finally {
+                 in.close()
+               }
              }
              Iteratee.fold[Array[Byte], PipedOutputStream](out) {
                (out, bytes) => { out.write(bytes); out }
-             }.map(_=>blockingIO.value.get)
+             }.map(finished => {
+               try {
+                 out.flush(); out.close();
+               } catch {
+                 case e => log.warn("exception caught closing stream with " + loc, e)
+               }
+               blockingIO.await.get
+             }) //todo: should be settable
            }
          }
          graphIteratee
