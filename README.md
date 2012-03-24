@@ -1,7 +1,8 @@
-# TLS Branch of Play 2.0
+# WebID/TLS Branch of Play 2.0
 
-This version of Play 2.0 will run with TLS enabled (https://... ) only. 
-There is a bug report associated with this branch [issue 215](https://play.lighthouseapp.com/projects/82401-play-20/tickets/215-tls-https-support-in-play-20)
+This branch of Play is implementing the [WebID authentication protocol](http://webid.info/). It 
+will run with TLS enabled (https://... ) only. 
+This is an extension of the [TLS branch](https://github.com/bblfish/Play20/commits/TLS_support) for which [issue 215](https://play.lighthouseapp.com/projects/82401-play-20/tickets/215-tls-https-support-in-play-20) was filed.
 
 The code is set up to by default allows the server to ask
 the client for an X509 certificate based authentication, by calling `play.api.mvc.Request.certs` method.
