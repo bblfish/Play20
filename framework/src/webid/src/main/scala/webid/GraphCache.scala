@@ -31,6 +31,8 @@ package org.w3.readwriteweb
 //import org.w3.readwriteweb.util._
 import java.net.{ConnectException, URL}
 import scalaz.{Scalaz, Validation}
+import org.w3.play.rdf.{JenaSyncRDFIteratee, JenaRdfXmlAsync}
+
 //import java.util.concurrent.TimeUnit
 //import com.weiglewilczek.slf4s.Logging
 //import com.google.common.cache._
@@ -50,7 +52,7 @@ import com.hp.hpl.jena.rdf.arp.SAX2Model
 import java.io._
 import play.api.libs.concurrent.{PurePromise, Akka, Promise}
 import org.w3.readwriteweb.util.SpyInputStream
-
+import org.w3.rdf._
 
 /**
 * Fetch resources on the Web and cache them
@@ -60,7 +62,7 @@ import org.w3.readwriteweb.util.SpyInputStream
 * @created: 12/10/2011
 *
 */
-object GraphCache  {
+class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf])  {
 //  import dispatch._
   import Scalaz._
   import webid.Logger.log
@@ -115,71 +117,44 @@ object GraphCache  {
 //  }
 
 
-  def getUrl(u: URL): Promise[Graph] = {
-    // note we prefer rdf/xml and turtle over html, as html does not always contain rdfa, and we prefer those over n3,
-    // as we don't have a full n3 parser. Better would be to have a list of available parsers for whatever rdf framework is
-    // installed (some claim to do n3 when they only really do turtle)
-    // we can't currently accept */* as we don't have GRDDL implemented
+  // note we prefer rdf/xml and turtle over html, as html does not always contain rdfa, and we prefer those over n3,
+  // as we don't have a full n3 parser. Better would be to have a list of available parsers for whatever rdf framework is
+  // installed (some claim to do n3 when they only really do turtle)
+  // we can't currently accept */* as we don't have GRDDL implemented
 
-    //we need to tell the model about the content type
-    val graph: Promise[Graph] = {
-       WS.url(u.toString).withHeaders("Accept"->
-        "application/rdf+xml,text/turtle,application/xhtml+xml;q=0.8,text/html;q=0.7,text/n3;q=0.2").get{ response =>
-         val lang = response.headers.get("Content-Type").map(_.head) match {
-           case Some(mime) => {
-             Lang(mime.split(";")(0)) getOrElse Lang.default
-           }
-           case None => RDFXML //todo: it would be better to try to do a bit of guessing in this case by looking at content
-         }
+  //we need to tell the model about the content type
+  def getUrl(u: URL): Promise[Graph] = WS.url(u.toString).
+      withHeaders("Accept" -> "application/rdf+xml,text/turtle,application/xhtml+xml;q=0.8,text/html;q=0.7,text/n3;q=0.2").
+      get { response =>
+        val lang = response.headers.get("Content-Type").map(_.head) match {
+          case Some(mime) => {
+            Lang(mime.split(";")(0)) getOrElse Lang.default
+          }
+          case None => RDFXML //todo: it would be better to try to do a bit of guessing in this case by looking at content
+        }
 
-         val loc = response.headers.get("Content-Location").map(_.head) match {
-           case Some(loc) => new URL(u, loc)
-           case None => new URL(u.getProtocol, u.getAuthority, u.getPort, u.getPath)
-         }
+        val loc = response.headers.get("Content-Location").map(_.head) match {
+          case Some(loc) => new URL(u, loc)
+          case None => new URL(u.getProtocol, u.getAuthority, u.getPort, u.getPath)
+        }
 
-         val graphIteratee : Iteratee[Array[Byte],Graph] = lang match {
-           case RDFXML => Iteratee.fold[Array[Byte], RdfXmlFeeder](new RdfXmlFeeder(loc.toString)) {
-             (graph, bytes) =>
-               if (graph.feeder.needMoreInput()) {
-                 graph.feeder.feedInput(bytes, 0, bytes.length)
-               } else throw new Throwable("ERROR: The feeder could not take any  more input for " + loc)
-
-               //should one check if asyncParser needs more input?
-               graph.asyncParser.parse()
-               graph
-           }.map(_.model.getGraph)
-           //case TURTLE => use my turtle parser in some way similar as above
-           case otherMime => {  //blocking parsers
-             val in = new PipedInputStream()
-             val out = new PipedOutputStream(in)
-             val blockingIO = Akka.future {
-               try {
-                 modelFromInputStream(in, loc, otherMime).fold(throw _,_.getGraph)
-               } finally {
-                 in.close()
-               }
-             }
-             Iteratee.fold[Array[Byte], PipedOutputStream](out) {
-               (out, bytes) => { out.write(bytes); out }
-             }.map(finished => {
-               try { out.flush(); out.close() } catch { case e: IOException => log.warn("exception caught closing stream with " + loc, e) }
-               blockingIO.await(5000).get       //todo: should be settable (but very likely much shorter than 5 seconds, since io succeeded)
-             })
-           }
-         }
-         graphIteratee
-       }
+        val graphIteratee: Iteratee[Array[Byte], Graph] = lang match {
+          case RDFXML => JenaRdfXmlAsync(loc)
+          //case TURTLE => use my async turtle parser in some way similar as above
+          case otherMime => new JenaSyncRDFIteratee(otherMime)(loc)
+        }
+        graphIteratee
     }
-    graph
-  }
+
+
 
 
     def modelFromInputStream( is: InputStream,
                               base: URL,
-                              lang: Lang): Validation[Throwable, Model] =
+                              lang: RDFSerialization): Validation[Throwable, Model] =
       try {
         val m = ModelFactory.createDefaultModel()
-        m.getReader(lang.jenaLang).read(m, is, base.toString)
+        m.getReader(Lang.jenaLang(lang)).read(m, is, base.toString)
         m.success
       } catch {
         case t =>  {
