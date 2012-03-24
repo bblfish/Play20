@@ -146,31 +146,6 @@ class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf])  {
         graphIteratee
     }
 
-
-
-
-    def modelFromInputStream( is: InputStream,
-                              base: URL,
-                              lang: RDFSerialization): Validation[Throwable, Model] =
-      try {
-        val m = ModelFactory.createDefaultModel()
-        m.getReader(Lang.jenaLang(lang)).read(m, is, base.toString)
-        m.success
-      } catch {
-        case t =>  {
-          log.info("cought exception turning stream into model ",t)
-          t.fail
-        }
-      }
-
-  case class RdfXmlFeeder(base: String) {
-    lazy val asyncReader: AsyncXMLStreamReader = new InputFactoryImpl().createAsyncXMLStreamReader();
-    lazy val feeder: AsyncInputFeeder = asyncReader.getInputFeeder();
-    lazy val model: Model = ModelFactory.createDefaultModel()
-    lazy val asyncParser = new AsyncJenaParser(SAX2Model.create(base, model),asyncReader)
-  }
-
-
     //      request.>+>[Validation[Throwable, Model]](res =>  {
 //      res >:> { headers =>
 //        val encoding = headers("Content-Type").headOption match {
