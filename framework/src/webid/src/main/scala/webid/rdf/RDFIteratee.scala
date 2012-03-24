@@ -51,17 +51,20 @@ object JenaRdfXmlAsync extends RDFIteratee[Jena] {
 }
 
 
-
+/**
+ * RDF parsers based on the Jena library, all of which are blocking (synchronous)
+ * @param serialization
+ */
 class JenaSyncRDFIteratee(val serialization: RDFSerialization) extends RDFIteratee[Jena] {
   import play.api.Play.current
   import webid.Logger.log
-
+  new net.rootdev.javardfa.jena.RDFaReader  //import shellac's rdfa parser
 
   def apply(loc: Option[URL]=None): Iteratee[Array[Byte],Jena#Graph] = {
-    {  //blocking parsers
+    {
       val in = new PipedInputStream()
       val out = new PipedOutputStream(in)
-      val blockingIO = Akka.future {
+      val blockingIO = Akka.future {  // run blocking parser in its own thread
         try {
           modelFromInputStream(in, loc.orNull, serialization).fold(throw _,_.getGraph)
         } finally {
@@ -97,6 +100,8 @@ class JenaSyncRDFIteratee(val serialization: RDFSerialization) extends RDFIterat
     case RDFXMLAbbrev => "RDF/XML-ABBREV"
     case Turtle => "TTL"
     case N3 => "N3"
+    case RDFaHTML => "HTML"
+    case RDFaXHTML => "XHTML"
   }
 
 }

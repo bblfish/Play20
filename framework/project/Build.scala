@@ -320,7 +320,9 @@ object PlayBuild extends Build {
         )
 
         val webIdDependencies = Seq(
-          "org.w3"                            %%   "jena"                     %   "0.1-SNAPSHOT"
+          "org.w3"                            %%   "jena"                     % "0.1-SNAPSHOT",
+          "net.rootdev"                       % "java-rdfa"                   % "0.4.2-RC2",
+          "nu.validator.htmlparser"           % "htmlparser"                  % "1.2.1"
         )
 
     }

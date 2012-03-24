@@ -4,13 +4,13 @@
 
 package org.w3.readwriteweb
 
-import org.w3.rdf.{RDFSerialization, N3, Turtle, RDFXML}
 import scala.None
+import org.w3.rdf._
 
 
 object Lang {
 
-  val supportedLanguages = Set(RDFXML, Turtle, N3)
+  val supportedLanguages = Set(RDFXML, Turtle, N3, RDFaHTML, RDFaXHTML)
 //  val supportContentTypes = supportedLanguages map (_.contentType)
 //  val supportedAsString = supportContentTypes mkString ", "
 
@@ -22,8 +22,8 @@ object Lang {
       case "text/rdf+n3"=>Some(N3)
       case "text/turtle" => Some(Turtle)
       case "application/rdf+xml" => Some(RDFXML)
-//      case "text/html" => Some(HTML)
-//      case "application/xhtml+xml" => Some(XHTML)
+      case "text/html" => Some(RDFaHTML)
+      case "application/xhtml+xml" => Some(RDFaXHTML)
       case _ => None
     }
 
@@ -35,15 +35,15 @@ object Lang {
     case RDFXML => "application/rdf+xml"
     case Turtle => "text/turtle"
     case N3 => "text/n3"
-    //    case XHTML => "application/xhtml+xml"
-    //    case HTML => "text/html"
+    case RDFaXHTML => "application/xhtml+xml"
+    case RDFaHTML => "text/html"
   }
 
   def jenaLang(lang: RDFSerialization) = lang match {
     case RDFXML => "RDF/XML-ABBREV"
     case Turtle => "TURTLE"
     case N3 => "N3"
-    //    case HTML => "HTML"
-    //    case XHTML => "XHTML"
+    case RDFaHTML => "HTML"
+    case RDFaXHTML => "XHTML"
   }
 }
