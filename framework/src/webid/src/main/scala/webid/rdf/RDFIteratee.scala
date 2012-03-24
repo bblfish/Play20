@@ -15,16 +15,21 @@ import com.fasterxml.aalto.stax.InputFactoryImpl
 import com.fasterxml.aalto.{AsyncXMLStreamReader, AsyncInputFeeder}
 import org.w3.rdf._
 
-trait RDFIteratee[Rdf <: RDF, Serialisation <: RDFSerialization] {
+trait RDFIteratee[Rdf <: RDF] {
 
-  def apply(loc: URL): Iteratee[Array[Byte],Rdf#Graph]
+  /**
+   *
+   * @param loc the location of the document to evaluate relative URLs (this will not make a connection)
+   * @return an iteratee to process a streams of bytes that will parse to an RDF#Graph
+   */
+  def apply(loc: Option[URL]=None): Iteratee[Array[Byte],Rdf#Graph]
 
 }
 
-object JenaRdfXmlAsync extends RDFIteratee[Jena, RDFXML] {
+object JenaRdfXmlAsync extends RDFIteratee[Jena] {
 
-  def apply(loc: URL): Iteratee[Array[Byte],Graph] = {
-    Iteratee.fold[Array[Byte], RdfXmlFeeder](new RdfXmlFeeder(loc.toString)) {
+  def apply(loc: Option[URL]): Iteratee[Array[Byte],Jena#Graph] =
+    Iteratee.fold[Array[Byte], RdfXmlFeeder](new RdfXmlFeeder(loc)) {
       (graph, bytes) =>
         if (graph.feeder.needMoreInput()) {
           graph.feeder.feedInput(bytes, 0, bytes.length)
@@ -34,31 +39,31 @@ object JenaRdfXmlAsync extends RDFIteratee[Jena, RDFXML] {
         graph.asyncParser.parse()
         graph
     }.map(_.model.getGraph)
-  }
 
-  protected case class RdfXmlFeeder(base: String) {
-    lazy val asyncReader: AsyncXMLStreamReader = new InputFactoryImpl().createAsyncXMLStreamReader();
-    lazy val feeder: AsyncInputFeeder = asyncReader.getInputFeeder();
+
+  protected case class RdfXmlFeeder(base: Option[URL]) {
+    lazy val asyncReader: AsyncXMLStreamReader = new InputFactoryImpl().createAsyncXMLStreamReader()
+    lazy val feeder: AsyncInputFeeder = asyncReader.getInputFeeder()
     lazy val model: Model = ModelFactory.createDefaultModel()
-    lazy val asyncParser = new AsyncJenaParser(SAX2Model.create(base, model),asyncReader)
+    lazy val asyncParser = new AsyncJenaParser(SAX2Model.create(base.map(_.toString).orNull, model),asyncReader)
   }
 
 }
 
 
 
-class JenaSyncRDFIteratee[Serialisation <: RDFSerialization](val serialization: Serialisation) extends RDFIteratee[Jena, Serialisation] {
+class JenaSyncRDFIteratee(val serialization: RDFSerialization) extends RDFIteratee[Jena] {
   import play.api.Play.current
   import webid.Logger.log
 
 
-  def apply(loc: URL): Iteratee[Array[Byte],Jena#Graph] = {
+  def apply(loc: Option[URL]=None): Iteratee[Array[Byte],Jena#Graph] = {
     {  //blocking parsers
       val in = new PipedInputStream()
       val out = new PipedOutputStream(in)
       val blockingIO = Akka.future {
         try {
-          modelFromInputStream(in, loc, serialization).fold(throw _,_.getGraph)
+          modelFromInputStream(in, loc.orNull, serialization).fold(throw _,_.getGraph)
         } finally {
           in.close()
         }

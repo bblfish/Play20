@@ -19,6 +19,7 @@ object Lang {
   def apply(contentType: String): Option[RDFSerialization] =
     contentType.trim.toLowerCase match {
       case "text/n3" => Some(N3)
+      case "text/rdf+n3"=>Some(N3)
       case "text/turtle" => Some(Turtle)
       case "application/rdf+xml" => Some(RDFXML)
 //      case "text/html" => Some(HTML)
