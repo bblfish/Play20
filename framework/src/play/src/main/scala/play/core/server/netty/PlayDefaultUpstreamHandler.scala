@@ -10,6 +10,8 @@ import org.jboss.netty.handler.stream._
 import org.jboss.netty.handler.codec.http.HttpHeaders._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Values._
+import org.jboss.netty.handler.ssl._
+
 import org.jboss.netty.channel.group._
 import java.util.concurrent._
 import play.core._
@@ -27,6 +29,12 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
   override def exceptionCaught(ctx: ChannelHandlerContext, e: ExceptionEvent) {
     Logger.trace("Exception caught in Netty", e.getCause)
     e.getChannel.close()
+  }
+  
+  override def channelConnected(ctx: ChannelHandlerContext, e: ChannelStateEvent) {
+    Option(ctx.getPipeline.get(classOf[SslHandler])).map { sslHandler =>
+      sslHandler.handshake()
+    }
   }
 
   override def channelOpen(ctx: ChannelHandlerContext, e: ChannelStateEvent) {
@@ -95,7 +103,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
                 Logger("play").trace("Sending simple result: " + r)
 
                 // Set response headers
-                headers.filterNot(_ == (CONTENT_LENGTH,"-1")).foreach {
+                headers.filterNot(_ == (CONTENT_LENGTH, "-1")).foreach {
 
                   // Fix a bug for Set-Cookie header. 
                   // Multiple cookies could be merged in a single header
@@ -118,15 +126,15 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
                   val writer: Function1[r.BODY_CONTENT, Promise[Unit]] = x => {
                     if (e.getChannel.isConnected())
                       NettyPromise(e.getChannel.write(ChannelBuffers.wrappedBuffer(r.writeable.transform(x))))
-                        .extend1{ case Redeemed(()) => () ; case Thrown(ex) => Logger("play").debug(ex.toString)}
+                        .extend1 { case Redeemed(()) => (); case Thrown(ex) => Logger("play").debug(ex.toString) }
                     else Promise.pure(())
                   }
 
                   val bodyIteratee = {
                     val writeIteratee = Iteratee.fold1(
                       if (e.getChannel.isConnected())
-                        NettyPromise( e.getChannel.write(nettyResponse))
-                        .extend1{ case Redeemed(()) => () ; case Thrown(ex) => Logger("play").debug(ex.toString)}
+                        NettyPromise(e.getChannel.write(nettyResponse))
+                        .extend1 { case Redeemed(()) => (); case Thrown(ex) => Logger("play").debug(ex.toString) }
                       else Promise.pure(()))((_, e: r.BODY_CONTENT) => writer(e))
 
                     Enumeratee.breakE[r.BODY_CONTENT](_ => !e.getChannel.isConnected()).transform(writeIteratee).mapDone { _ =>
@@ -186,18 +194,18 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
 
 
                 val writer: Function1[r.BODY_CONTENT, Promise[Unit]] = x => {
-                    if (e.getChannel.isConnected())
-                      NettyPromise(e.getChannel.write(new DefaultHttpChunk(ChannelBuffers.wrappedBuffer(r.writeable.transform(x)))))
-                        .extend1{ case Redeemed(()) => () ; case Thrown(ex) => Logger("play").debug(ex.toString)}
-                    else Promise.pure(())
-                  }
+                  if (e.getChannel.isConnected())
+                    NettyPromise(e.getChannel.write(new DefaultHttpChunk(ChannelBuffers.wrappedBuffer(r.writeable.transform(x)))))
+                      .extend1 { case Redeemed(()) => (); case Thrown(ex) => Logger("play").debug(ex.toString) }
+                  else Promise.pure(())
+                }
 
-                  val chunksIteratee = {
-                    val writeIteratee = Iteratee.fold1(
-                      if (e.getChannel.isConnected())
-                        NettyPromise( e.getChannel.write(nettyResponse))
-                        .extend1{ case Redeemed(()) => () ; case Thrown(ex) => Logger("play").debug(ex.toString)}
-                      else Promise.pure(()))((_, e: r.BODY_CONTENT) => writer(e))
+                val chunksIteratee = {
+                  val writeIteratee = Iteratee.fold1(
+                    if (e.getChannel.isConnected())
+                      NettyPromise(e.getChannel.write(nettyResponse))
+                      .extend1 { case Redeemed(()) => (); case Thrown(ex) => Logger("play").debug(ex.toString) }
+                    else Promise.pure(()))((_, e: r.BODY_CONTENT) => writer(e))
 
 
                   Enumeratee.breakE[r.BODY_CONTENT](_ => !e.getChannel.isConnected())(writeIteratee).mapDone { _ =>
@@ -206,7 +214,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
                       if (!keepAlive) f.addListener(ChannelFutureListener.CLOSE)
                     }
                   }
-                  }
+                }
 
                 chunks(chunksIteratee)
 
@@ -261,26 +269,26 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
 
                 val ( result, handler) = newRequestBodyHandler(eventuallyBodyParser,allChannels, server)
 
-                val p: ChannelPipeline = ctx.getChannel().getPipeline()
-                p.replace("handler", "handler", handler)
+                  val p: ChannelPipeline = ctx.getChannel().getPipeline()
+                  p.replace("handler", "handler", handler)
 
-                result
+                  result
 
-            } else {
+                } else {
 
-              lazy val bodyEnumerator = {
-                val body = {
-                  val cBuffer = nettyHttpRequest.getContent()
-                  val bytes = new Array[Byte](cBuffer.readableBytes())
-                  cBuffer.readBytes(bytes)
-                  bytes
-                }
-                Enumerator(body).andThen(Enumerator.enumInput(EOF))
-              }
+                  lazy val bodyEnumerator = {
+                    val body = {
+                      val cBuffer = nettyHttpRequest.getContent()
+                      val bytes = new Array[Byte](cBuffer.readableBytes())
+                      cBuffer.readBytes(bytes)
+                      bytes
+                    }
+                    Enumerator(body).andThen(Enumerator.enumInput(EOF))
+                  }
 
               eventuallyBodyParser.flatMap(it => bodyEnumerator |>> it): Promise[Iteratee[Array[Byte], Either[Result, action.BODY_CONTENT]]]
 
-            }
+                }
 
             val eventuallyResultOrRequest =
               eventuallyResultOrBody
