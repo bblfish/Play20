@@ -6,6 +6,8 @@ trait PlayKeys {
 
   val playAssetsDirectories = SettingKey[Seq[File]]("play-assets-directories")
 
+  val playExternalAssets = SettingKey[Seq[(File, File => PathFinder, String)]]("play-external-assets")
+
   val confDirectory = SettingKey[File]("play-conf")
 
   val templatesImport = SettingKey[Seq[String]]("play-templates-imports")

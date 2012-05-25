@@ -5,6 +5,7 @@ import play.api.http._
 import play.api.libs.iteratee._
 
 import scala.collection.JavaConverters._
+import play.mvc.Http.{ Cookies => JCookies, Cookie => JCookie }
 
 /**
  * Java compatible Results
@@ -24,8 +25,17 @@ object JavaResults extends Results with DefaultWriteables with DefaultContentTyp
   def contentTypeOfBytes(mimeType: String): ContentTypeOf[Array[Byte]] = ContentTypeOf(Option(mimeType).orElse(Some("application/octet-stream")))
   def emptyHeaders = Map.empty[String, String]
   def empty = Results.EmptyContent()
-  def async(p: play.api.libs.concurrent.Promise[Result]) = AsyncResult(p)
-  def chunked[A](onDisconnected: () => Unit) = play.api.libs.iteratee.Enumerator.imperative[A](onComplete = { onDisconnected() })
+  def async(p: play.api.libs.concurrent.Promise[Result]) = {
+    import scala.collection.JavaConverters.mapAsScalaMapConverter
+    val rsp = play.mvc.Http.Context.current().response()
+    AsyncResult(p.map {
+      case r: PlainResult =>
+        r.withHeaders((rsp.getHeaders().asScala -- r.header.headers.keys).toList:_*)
+      case r =>
+        r
+    })
+  }
+  def chunked[A](onDisconnected: () => Unit) = play.api.libs.iteratee.Enumerator.imperative[A](onComplete = onDisconnected)
   def chunked(stream: java.io.InputStream, chunkSize: Int) = Enumerator.fromStream(stream, chunkSize)
   def chunked(file: java.io.File, chunkSize: Int) = Enumerator.fromFile(file, chunkSize)
 }
@@ -35,6 +45,17 @@ object JavaResultExtractor {
   def getStatus(result: play.mvc.Result): Int = result.getWrappedResult match {
     case Result(status, _) => status
     case r => sys.error("Cannot extract the Status code from a result of type " + r.getClass.getName)
+  }
+
+  def getCookies(result: play.mvc.Result): JCookies = result.getWrappedResult match {
+    case Result(_, headers) => new JCookies {
+      def get(name: String) = {
+        Cookies(headers.get(HeaderNames.SET_COOKIE)).get(name).map { cookie =>
+          new JCookie(cookie.name, cookie.value, cookie.maxAge, cookie.path, cookie.domain.getOrElse(null), cookie.secure, cookie.httpOnly)
+        }.getOrElse(null)
+      }
+    }
+    case r => sys.error("Cannot extract Headers from a result of type " + r.getClass.getName)
   }
 
   def getHeaders(result: play.mvc.Result): java.util.Map[String, String] = result.getWrappedResult match {

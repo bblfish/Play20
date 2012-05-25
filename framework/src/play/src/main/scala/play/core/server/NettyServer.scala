@@ -76,11 +76,11 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
     new org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory(
       Executors.newCachedThreadPool(),
       Executors.newCachedThreadPool()))
-
+  
   val allChannels = new DefaultChannelGroup
-
+      
   val defaultUpStreamHandler = new PlayDefaultUpstreamHandler(this, allChannels)
-
+      
   class DefaultPipelineFactory extends ChannelPipelineFactory {
 
     def complete(pipeline: ChannelPipeline) =  {
@@ -94,8 +94,8 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
     def getPipeline = complete(pipeline())
 
   }
-
-
+  
+  
   class SecurePipelineFactory extends DefaultPipelineFactory with Ssl {
     override def getPipeline = {
       val engine = sslContext.createSSLEngine
@@ -223,13 +223,13 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
   }
 
 
-  allChannels.add(bootstrap.bind(new java.net.InetSocketAddress(address, port)))
-
+    allChannels.add(bootstrap.bind(new java.net.InetSocketAddress(address, port)))
+  
 
   mode match {
     case Mode.Test =>
     case _ => logger.info("Listening for HTTP on port %s...".format(port))
-  }
+      }
 
   override def stop() {
 
@@ -252,7 +252,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, address: String =
 
     allChannels.close().awaitUninterruptibly()
     bootstrap.releaseExternalResources()
-
+    
   }
 
 }

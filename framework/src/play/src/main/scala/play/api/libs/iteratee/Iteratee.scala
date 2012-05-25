@@ -409,6 +409,15 @@ trait Enumerator[E] {
 
   def mapInput[U](f: Input[E] => Input[U]) = parent &> Enumeratee.mapInput[E](f)
 
+  def flatMap[U](f: E => Enumerator[U]): Enumerator[U] = {
+    new Enumerator[U] {
+      def apply[A](iteratee: Iteratee[U, A]): Promise[Iteratee[U, A]] = {
+        val folder = Iteratee.fold1[E, Iteratee[U, A]](iteratee)((it, e) => f(e)(it))
+        parent(folder).flatMap(_.run)
+      }
+    }
+  }
+
 }
 
 /**
@@ -533,10 +542,32 @@ object Enumeratee {
         case in @ (Input.El(_) | Input.Empty) =>
           new CheckDone[From, To] { def continue[A](k: K[To, A]) = Cont(step(k)) } &> k(f(in))
 
-        case Input.EOF => Done(k(Input.EOF), Input.EOF)
+        case Input.EOF => Done(Cont(k), Input.EOF)
       }
 
       def continue[A](k: K[To, A]) = Cont(step(k))
+    }
+  }
+
+  def mapInputM[From] = new {
+    def apply[To](f: Input[From] => Promise[Input[To]]) = new CheckDone[From, To] {
+
+      def step[A](k: K[To, A]): K[From, Iteratee[To, A]] = {
+        case in @ (Input.El(_) | Input.Empty) =>
+          new CheckDone[From, To] { def continue[A](k: K[To, A]) = Cont(step(k)) } &> Iteratee.flatten(f(in).map(k(_)))
+
+        case Input.EOF => Done(Cont(k), Input.EOF)
+      }
+
+      def continue[A](k: K[To, A]) = Cont(step(k))
+    }
+  }
+
+  def mapM[E] = new {
+    def apply[NE](f: E => Promise[NE]): Enumeratee[E, NE] = mapInputM[E]{
+      case Input.Empty => Promise.pure(Input.Empty)
+      case Input.EOF => Promise.pure(Input.EOF)
+      case Input.El(e) => f(e).map(Input.El(_))
     }
   }
 
@@ -557,7 +588,7 @@ object Enumeratee {
       case in @ Input.Empty if remaining > 0 =>
         new CheckDone[E, E] { def continue[A](k: K[E, A]) = Cont(step(remaining)(k)) } &> k(in)
 
-      case Input.EOF => Done(k(Input.EOF), Input.EOF)
+      case Input.EOF => Done(Cont(k), Input.EOF)
 
       case in => Done(Cont(k), in)
     }
@@ -579,7 +610,7 @@ object Enumeratee {
         case in @ Input.Empty =>
           new CheckDone[From, To] { def continue[A](k: K[To, A]) = Cont(step(lastTo)(k)) } &> k(in)
 
-        case Input.EOF => Done(k(Input.EOF), Input.EOF)
+        case Input.EOF => Done(Cont(k), Input.EOF)
 
       }
 
@@ -600,7 +631,7 @@ object Enumeratee {
             kF => Cont(step(Cont(kF))(k)),
             (msg, e) => Error(msg, in))
 
-        case Input.EOF => Done(k(Input.EOF), Input.EOF)
+        case Input.EOF => Done(Cont(k), Input.EOF)
 
       }
 
@@ -620,15 +651,13 @@ object Enumeratee {
       case in @ Input.Empty =>
         new CheckDone[E, E] { def continue[A](k: K[E, A]) = Cont(step(k)) } &> k(in)
 
-      case Input.EOF => Done(k(Input.EOF), Input.EOF)
+      case Input.EOF => Done(Cont(k), Input.EOF)
 
     }
 
     def continue[A](k: K[E, A]) = Cont(step(k))
 
   }
-
-
 
   def collect[From] = new {
 
@@ -644,7 +673,7 @@ object Enumeratee {
         case in @ Input.Empty =>
           new CheckDone[From, To] { def continue[A](k: K[To, A]) = Cont(step(k)) } &> k(in)
 
-        case Input.EOF => Done(k(Input.EOF), Input.EOF)
+        case Input.EOF => Done(Cont(k), Input.EOF)
 
       }
 
@@ -670,7 +699,7 @@ object Enumeratee {
 
           case Input.EOF => inner.pureFlatFold(
             (_, _) => Done(inner, Input.EOF),
-            k => Done(k(Input.EOF), Input.EOF),
+            k => Done(Cont(k), Input.EOF),
             (_, _) => Done(inner, Input.EOF))
 
           case Input.Empty => Cont(step(counter, inner))
@@ -700,7 +729,7 @@ object Enumeratee {
 
           case Input.EOF => inner.pureFlatFold(
             (_, _) => Done(inner, Input.EOF),
-            k => Done(k(Input.EOF), Input.EOF),
+            k => Done(Cont(k), Input.EOF),
             (_, _) => Done(inner, Input.EOF))
 
           case Input.Empty => Cont(step(inner))
@@ -735,6 +764,40 @@ object Enumeratee {
 
     }
   }
+
+  def passAlong[M] = new Enumeratee.CheckDone[M, M] {
+
+    def step[A](k: K[M, A]): K[M, Iteratee[M, A]] = {
+
+      case in @ (Input.El(_) | Input.Empty) => new Enumeratee.CheckDone[M, M] { def continue[A](k: K[M, A]) = Cont(step(k)) } &> k(in)
+
+      case Input.EOF => Done(Cont(k), Input.EOF)
+    }
+    def continue[A](k: K[M, A]) = Cont(step(k))
+  }
+
+  def onIterateeDone[E](action: () => Unit):Enumeratee[E,E] = new Enumeratee[E,E]{
+
+    def applyOn[A](iteratee:Iteratee[E,A]):Iteratee[E,Iteratee[E,A]] = passAlong[E](iteratee).map{ a => action();a}
+
+  }
+
+  def onEOF[E](action: () => Unit):Enumeratee[E,E] = new CheckDone[E, E] {
+
+      def step[A](k: K[E, A]): K[E, Iteratee[E, A]] = {
+
+        case Input.EOF =>
+          action()
+          Done(Cont(k), Input.EOF)
+
+        case in =>
+          new CheckDone[E, E] { def continue[A](k: K[E, A]) = Cont(step(k)) } &> k(in)
+      }
+
+      def continue[A](k: K[E, A]) = Cont(step(k))
+
+  }
+
 }
 
 object Enumerator {
@@ -821,13 +884,13 @@ object Enumerator {
   }
 
   def imperative[E](
-    onStart: => Unit = () => (),
-    onComplete: => Unit = () => (),
+    onStart: () => Unit = () => (),
+    onComplete: () => Unit = () => (),
     onError: (String, Input[E]) => Unit = (_: String, _: Input[E]) => ()): PushEnumerator[E] = new PushEnumerator[E](onStart, onComplete, onError)
 
   def pushee[E](
     onStart: Pushee[E] => Unit,
-    onComplete: => Unit = () => (),
+    onComplete: () => Unit = () => (),
     onError: (String, Input[E]) => Unit = (_: String, _: Input[E]) => ()) = new Enumerator[E] {
 
     def apply[A](it: Iteratee[E, A]): Promise[Iteratee[E, A]] = {
@@ -848,7 +911,7 @@ object Enumerator {
 
               // DONE
               (a, in) => {
-                onComplete
+                onComplete()
                 Done(a, in)
               },
 
@@ -857,7 +920,7 @@ object Enumerator {
                 val next = k(Input.El(item))
                 next.pureFlatFold(
                   (a, in) => {
-                    onComplete
+                    onComplete()
                     next
                   },
                   _ => next,
@@ -882,6 +945,44 @@ object Enumerator {
   }
 
   import scalax.io.JavaConverters._
+
+  def unfoldM[S,E](s:S)(f: S => Promise[Option[(S,E)]] ): Enumerator[E] = new Enumerator[E] {
+    def apply[A](it: Iteratee[E, A]): Promise[Iteratee[E, A]] = {
+
+      var iterateeP = Promise[Iteratee[E, A]]()
+
+      def step(it: Iteratee[E, A], state:S) {
+
+        val next = it.fold(
+          (a, e) => { iterateeP.redeem(it); Promise.pure(None) },
+          k => {
+            f(state).map {
+              case None => {
+                val remainingIteratee = k(Input.EOF)
+                iterateeP.redeem(remainingIteratee)
+                None
+              }
+              case Some((s,read)) => {
+                val nextIteratee = k(Input.El(read))
+                Some((nextIteratee,s))
+              }
+            }
+          },
+          (_, _) => { iterateeP.redeem(it); Promise.pure(None) }
+        )
+
+        next.extend1 {
+          case Redeemed(Some((i,s))) => step(i,s)
+          case Redeemed(None) => // do nothing, already redeemed
+          case Thrown(e) => iterateeP.throwing(e)
+        }
+
+      }
+
+      step(it, s)
+      iterateeP
+    }
+  }
 
   def fromCallback1[E](retriever: Boolean => Promise[Option[E]],
     onComplete: () => Unit = () => (),
@@ -912,13 +1013,12 @@ object Enumerator {
 
         next.extend1 {
           case Redeemed(Some(i)) => step(i)
+
+          case Redeemed(None) => onComplete()
           case Thrown(e) => 
             iterateeP.throwing(e)
-            onComplete()
         }
-
       }
-
       step(it, true)
       iterateeP
     }
@@ -953,6 +1053,8 @@ object Enumerator {
 
         next.extend1 {
           case Redeemed(Some(i)) => step(i)
+          case Thrown(e) => 
+            iterateeP.throwing(e)
           case _ => onComplete()
         }
 
@@ -1003,20 +1105,18 @@ object Enumerator {
         (_, _) => it)))
   }
 
-
-
 }
 
 class PushEnumerator[E] private[iteratee] (
-    onStart: => Unit = () => (),
-    onComplete: => Unit = () => (),
+    onStart: () => Unit = () => (),
+    onComplete: () => Unit = () => (),
     onError: (String, Input[E]) => Unit = (_: String, _: Input[E]) => ()) extends Enumerator[E] with Enumerator.Pushee[E] {
 
   var iteratee: Iteratee[E, _] = _
   var promise: Promise[Iteratee[E, _]] with Redeemable[Iteratee[E, _]] = _
 
   def apply[A](it: Iteratee[E, A]): Promise[Iteratee[E, A]] = {
-    onStart
+    onStart()
     iteratee = it.asInstanceOf[Iteratee[E, _]]
     val newPromise = new STMPromise[Iteratee[E, A]]()
     promise = newPromise.asInstanceOf[Promise[Iteratee[E, _]] with Redeemable[Iteratee[E, _]]]
@@ -1037,7 +1137,7 @@ class PushEnumerator[E] private[iteratee] (
 
         // DONE
         (a, in) => {
-          onComplete
+          onComplete()
           Done(a, in)
         },
 
@@ -1046,7 +1146,7 @@ class PushEnumerator[E] private[iteratee] (
           val next = k(Input.El(item))
           next.pureFlatFold(
             (a, in) => {
-              onComplete
+              onComplete()
               next
             },
             _ => next,

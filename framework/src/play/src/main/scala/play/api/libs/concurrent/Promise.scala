@@ -8,6 +8,10 @@ import akka.actor.Actor._
 
 import java.util.concurrent.{ TimeUnit }
 
+import scala.collection.mutable.Builder
+import scala.collection._
+import scala.collection.generic.CanBuildFrom
+
 sealed trait PromiseValue[+A] {
   def isDefined = this match { case Waiting => false; case _ => true }
 }
@@ -27,6 +31,7 @@ trait NotWaiting[+A] extends PromiseValue[A] {
   }
 
 }
+
 case class Thrown(e: scala.Throwable) extends NotWaiting[Nothing]
 case class Redeemed[+A](a: A) extends NotWaiting[A]
 case object Waiting extends PromiseValue[Nothing]
@@ -34,6 +39,12 @@ case object Waiting extends PromiseValue[Nothing]
 trait Promise[+A] {
 
   def onRedeem(k: A => Unit): Unit
+
+  def recover[AA >: A](pf: PartialFunction[Throwable, AA]): Promise[AA] = extend1 {
+    case Thrown(e) if pf.isDefinedAt(e) => pf(e)
+    case Thrown(e) => throw e
+    case Redeemed(a) => a
+  }
 
   def extend[B](k: Function1[Promise[A], B]): Promise[B]
 
@@ -94,22 +105,6 @@ trait Redeemable[-A] {
   def throwing(t: Throwable): Unit
 }
 
-object STMPromise {
-
-  val invoker = play.core.Invoker.promiseInvoker
-
-  class PromiseInvoker extends Actor {
-
-    def receive = {
-      case Invoke(a, k) => k(a)
-    }
-
-  }
-
-  case class Invoke[A](a: A, k: A => Unit)
-
-}
-
 class STMPromise[A] extends Promise[A] with Redeemable[A] {
   import scala.concurrent.stm._
 
@@ -118,7 +113,10 @@ class STMPromise[A] extends Promise[A] with Redeemable[A] {
 
   def extend[B](k: Function1[Promise[A], B]): Promise[B] = {
     val result = new STMPromise[B]()
-    addAction(p => result.redeem(k(p)))
+    addAction { p =>
+      val bOrExc = scala.util.control.Exception.allCatch[B].either(k(p))
+      bOrExc.fold(e => result.throwing(e), b => result.redeem(b))
+    }
     result
   }
 
@@ -160,7 +158,7 @@ class STMPromise[A] extends Promise[A] with Redeemable[A] {
     }
   }
 
-  private def invoke[T](a: T, k: T => Unit): Unit = STMPromise.invoker ! STMPromise.Invoke(a, k)
+  private def invoke[T](a: T, k: T => Unit): Unit = akka.dispatch.Future { k(a) }(play.core.Invoker.promiseDispatcher)
 
   def redeem(body: => A): Unit = {
     val result = scala.util.control.Exception.allCatch[A].either(body)
@@ -192,7 +190,12 @@ class STMPromise[A] extends Promise[A] with Redeemable[A] {
     val result = new STMPromise[B]()
     this.addAction(p => p.value match {
       case Redeemed(a) =>
-       (try{ f(a)}catch{case e => {println("wow! "+e); throw e}}).extend(ip => ip.value match {
+        (try {
+          f(a)
+        } catch {
+          case e =>
+            Promise.pure[B](throw e)
+        }).extend(ip => ip.value match {
           case Redeemed(a) => result.redeem(a)
           case Thrown(e) => result.redeem(throw e)
 
@@ -207,7 +210,7 @@ object PurePromise {
 
   def apply[A](lazyA: => A): Promise[A] = new Promise[A] {
 
-    val a : NotWaiting[A] = scala.util.control.Exception.allCatch[A].either(lazyA).fold(Thrown(_),Redeemed(_))
+    val a: NotWaiting[A] = scala.util.control.Exception.allCatch[A].either(lazyA).fold(Thrown(_), Redeemed(_))
 
     private def neverRedeemed[A]: Promise[A] = new Promise[A] {
       def onRedeem(k: A => Unit): Unit = ()
@@ -238,15 +241,15 @@ object PurePromise {
 
     def filter(p: A => Boolean) = a.fold(_ => this, a => if (p(a)) this else neverRedeemed[A])
 
-    def map[B](f: A => B): Promise[B] = a.fold(e =>  PurePromise[B](throw e), a => PurePromise[B]( f(a)) )
+    def map[B](f: A => B): Promise[B] = a.fold(e => PurePromise[B](throw e), a => PurePromise[B](f(a)))
 
-    def flatMap[B](f: A => Promise[B]): Promise[B] = a.fold( e => PurePromise(throw e), a => try { f(a) } catch{case e => PurePromise(throw e)})
+    def flatMap[B](f: A => Promise[B]): Promise[B] = a.fold(e => PurePromise(throw e), a => try { f(a) } catch { case e => PurePromise(throw e) })
   }
 }
 
 object Promise {
 
-  def pure[A](a: A): Promise[A] = PurePromise(a)
+  def pure[A](a: => A): Promise[A] = PurePromise(a)
 
   def apply[A](): Promise[A] with Redeemable[A] = new STMPromise[A]()
 
@@ -260,8 +263,10 @@ object Promise {
     p
   }
 
-  def sequence[A](promises: Seq[Promise[A]]): Promise[Seq[A]] = {
-    promises.foldLeft(Promise.pure(Seq[A]()))((s, p) => s.flatMap(s => p.map(a => s :+ a)))
+  def sequence[A](in: Option[Promise[A]]): Promise[Option[A]] = in.map { p => p.map { v => Some(v) } }.getOrElse { Promise.pure(None) }
+
+  def sequence[B, M[_]](in: M[Promise[B]])(implicit toTraversableLike: M[Promise[B]] => TraversableLike[Promise[B], M[Promise[B]]], cbf: CanBuildFrom[M[Promise[B]], B, M[B]]): Promise[M[B]] = {
+    toTraversableLike(in).foldLeft(Promise.pure(cbf(in)))((fr, fa: Promise[B]) => for (r <- fr; a <- fa) yield (r += a)).map(_.result)
   }
 }
 

@@ -51,6 +51,12 @@ trait PlaySettings {
 
       "views.%format%._"))
 
+  def closureCompilerSettings(c: com.google.javascript.jscomp.CompilerOptions) = Seq[Setting[_]](
+      resourceGenerators in Compile <<= JavascriptCompiler(Some(c))(Seq(_)),
+      resourceGenerators in Compile <+= LessCompiler,
+      resourceGenerators in Compile <+= CoffeescriptCompiler
+    )
+
   lazy val defaultSettings = Seq[Setting[_]](
 
     resolvers ++= Seq(
@@ -117,7 +123,7 @@ trait PlaySettings {
 
     mainClass in (Compile, run) := Some(classOf[play.core.server.NettyServer].getName),
 
-    compile in (Compile) <<= PostCompile,
+    compile in (Compile) <<= PostCompile(scope = Compile),
 
     dist <<= distTask,
 
@@ -147,19 +153,19 @@ trait PlaySettings {
 
     routesImport := Seq.empty[String],
 
-    playIntellij <<= playIntellijTask,
-
     playHash <<= playHashTask,
 
     // Assets
 
     playAssetsDirectories := Seq.empty[File],
 
+    playExternalAssets := Seq.empty[(File, File => PathFinder, String)],
+
     playAssetsDirectories <+= baseDirectory / "public",
 
     resourceGenerators in Compile <+= LessCompiler,
     resourceGenerators in Compile <+= CoffeescriptCompiler,
-    resourceGenerators in Compile <+= JavascriptCompiler,
+    resourceGenerators in Compile <+= JavascriptCompiler(fullCompilerOptions = None),
 
     lessEntryPoints <<= (sourceDirectory in Compile)(base => ((base / "assets" ** "*.less") --- base / "assets" ** "_*")),
     coffeescriptEntryPoints <<= (sourceDirectory in Compile)(base => base / "assets" ** "*.coffee"),

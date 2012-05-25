@@ -10,18 +10,18 @@ import org.jboss.netty.handler.stream._
 import org.jboss.netty.handler.codec.http.HttpHeaders._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Names._
 import org.jboss.netty.handler.codec.http.HttpHeaders.Values._
+import org.jboss.netty.handler.ssl._
 
 import org.jboss.netty.channel.group._
 import java.util.concurrent._
-
 import play.core._
 import server.Server
 import play.api._
 import play.api.mvc._
+import play.api.http.HeaderNames.X_FORWARDED_FOR
 import play.api.libs.iteratee._
 import play.api.libs.iteratee.Input._
 import play.api.libs.concurrent._
-
 import scala.collection.JavaConverters._
 import scala.collection.immutable
 import java.security.cert.Certificate
@@ -36,6 +36,12 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
   override def exceptionCaught(ctx: ChannelHandlerContext, e: ExceptionEvent) {
     logger.warn("Exception caught in Netty", e.getCause)
     e.getChannel.close()
+  }
+  
+  override def channelConnected(ctx: ChannelHandlerContext, e: ChannelStateEvent) {
+    Option(ctx.getPipeline.get(classOf[SslHandler])).map { sslHandler =>
+      sslHandler.handshake()
+    }
   }
 
   override def channelOpen(ctx: ChannelHandlerContext, e: ChannelStateEvent) {
@@ -106,6 +112,18 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
         val rHeaders = getHeaders(nettyHttpRequest)
         val rCookies = getCookies(nettyHttpRequest)
 
+        def rRemoteAddress = e.getRemoteAddress match {
+          case ra: java.net.InetSocketAddress => {
+            val remoteAddress = ra.getAddress.getHostAddress
+            (for {
+              xff <- rHeaders.get(X_FORWARDED_FOR)
+              app <- server.applicationProvider.get.right.toOption
+              trustxforwarded <- app.configuration.getBoolean("trustxforwarded").orElse(Some(false))
+              if remoteAddress == "127.0.0.1" || trustxforwarded
+            } yield xff).getOrElse(remoteAddress)
+          }
+        }
+
         import org.jboss.netty.util.CharsetUtil;
 
         //mapping netty request to Play's
@@ -116,6 +134,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
           def method = nettyHttpRequest.getMethod.getName
           def queryString = parameters
           def headers = rHeaders
+          lazy val remoteAddress = rRemoteAddress
           def username = None
         }
 
@@ -139,7 +158,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
                 logger.trace("Sending simple result: " + r)
 
                 // Set response headers
-                headers.filterNot(_ == (CONTENT_LENGTH,"-1")).foreach {
+                headers.filterNot(_ == (CONTENT_LENGTH, "-1")).foreach {
 
                   // Fix a bug for Set-Cookie header. 
                   // Multiple cookies could be merged in a single header
@@ -162,15 +181,15 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
                   val writer: Function1[r.BODY_CONTENT, Promise[Unit]] = x => {
                     if (e.getChannel.isConnected())
                       NettyPromise(e.getChannel.write(ChannelBuffers.wrappedBuffer(r.writeable.transform(x))))
-                        .extend1{ case Redeemed(()) => () ; case Thrown(ex) => Logger("play").debug(ex.toString)}
+                        .extend1 { case Redeemed(()) => (); case Thrown(ex) => Logger("play").debug(ex.toString) }
                     else Promise.pure(())
                   }
 
                   val bodyIteratee = {
                     val writeIteratee = Iteratee.fold1(
                       if (e.getChannel.isConnected())
-                        NettyPromise( e.getChannel.write(nettyResponse))
-                        .extend1{ case Redeemed(()) => () ; case Thrown(ex) => Logger("play").debug(ex.toString)}
+                        NettyPromise(e.getChannel.write(nettyResponse))
+                        .extend1 { case Redeemed(()) => (); case Thrown(ex) => Logger("play").debug(ex.toString) }
                       else Promise.pure(()))((_, e: r.BODY_CONTENT) => writer(e))
 
                     Enumeratee.breakE[r.BODY_CONTENT](_ => !e.getChannel.isConnected()).transform(writeIteratee).mapDone { _ =>
@@ -228,21 +247,19 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
                 nettyResponse.setHeader(TRANSFER_ENCODING, HttpHeaders.Values.CHUNKED)
                 nettyResponse.setChunked(true)
 
-
                 val writer: Function1[r.BODY_CONTENT, Promise[Unit]] = x => {
+                  if (e.getChannel.isConnected())
+                    NettyPromise(e.getChannel.write(new DefaultHttpChunk(ChannelBuffers.wrappedBuffer(r.writeable.transform(x)))))
+                      .extend1 { case Redeemed(()) => (); case Thrown(ex) => Logger("play").debug(ex.toString) }
+                  else Promise.pure(())
+                }
+
+                val chunksIteratee = {
+                  val writeIteratee = Iteratee.fold1(
                     if (e.getChannel.isConnected())
-                      NettyPromise(e.getChannel.write(new DefaultHttpChunk(ChannelBuffers.wrappedBuffer(r.writeable.transform(x)))))
-                        .extend1{ case Redeemed(()) => () ; case Thrown(ex) => Logger("play").debug(ex.toString)}
-                    else Promise.pure(())
-                  }
-
-                  val chunksIteratee = {
-                    val writeIteratee = Iteratee.fold1(
-                      if (e.getChannel.isConnected())
-                        NettyPromise( e.getChannel.write(nettyResponse))
-                        .extend1{ case Redeemed(()) => () ; case Thrown(ex) => Logger("play").debug(ex.toString)}
-                      else Promise.pure(()))((_, e: r.BODY_CONTENT) => writer(e))
-
+                      NettyPromise(e.getChannel.write(nettyResponse))
+                      .extend1 { case Redeemed(()) => (); case Thrown(ex) => Logger("play").debug(ex.toString) }
+                    else Promise.pure(()))((_, e: r.BODY_CONTENT) => writer(e))
 
                   Enumeratee.breakE[r.BODY_CONTENT](_ => !e.getChannel.isConnected())(writeIteratee).mapDone { _ =>
                     if (e.getChannel.isConnected()) {
@@ -250,7 +267,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
                       if (!keepAlive) f.addListener(ChannelFutureListener.CLOSE)
                     }
                   }
-                  }
+                }
 
                 chunks(chunksIteratee)
 
@@ -308,11 +325,13 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
                   val (result, handler) = newRequestBodyHandler(bodyParser, allChannels, server)
 
                   val intermediateChunks = ctx.getAttachment.asInstanceOf[scala.collection.mutable.ListBuffer[org.jboss.netty.channel.MessageEvent]]
-                  intermediateChunks.foreach(handler.messageReceived(ctx, _))
-                  ctx.setAttachment(null)
 
                   val p: ChannelPipeline = ctx.getChannel().getPipeline()
                   p.replace("handler", "handler", handler)
+
+                  intermediateChunks.foreach(handler.messageReceived(ctx, _))
+                  ctx.setAttachment(null)
+
                   e.getChannel.setReadable(true)
 
                   result
@@ -343,6 +362,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
                       def method = nettyHttpRequest.getMethod.getName
                       def queryString = parameters
                       def headers = rHeaders
+                      lazy val remoteAddress = rRemoteAddress
                       def username = None
                       val body = b
                     })
