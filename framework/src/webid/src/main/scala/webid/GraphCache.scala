@@ -145,7 +145,7 @@ class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf], val serializers: Seria
           case None => new URL(u.getProtocol, u.getAuthority, u.getPort, u.getPath)
         }
         serializers.iteratee4(lang)(Some(loc))
-    }
+    }.map{ case (it,graph) => graph}
 
     //      request.>+>[Validation[Throwable, Model]](res =>  {
 //      res >:> { headers =>

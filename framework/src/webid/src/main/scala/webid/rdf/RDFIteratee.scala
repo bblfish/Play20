@@ -1,11 +1,8 @@
 package org.w3.play.rdf
 
 import java.io._
-import scalaz.Validation
-import scalaz.Validation._
 import play.api.libs.iteratee.Iteratee
 import java.net.URL
-import com.hp.hpl.jena.graph.Graph
 import play.api.libs.concurrent.Akka
 import com.hp.hpl.jena.rdf.model.{ModelFactory, Model}
 import org.w3.rdf.jena.Jena
@@ -30,14 +27,14 @@ object JenaRdfXmlAsync extends RDFIteratee[Jena] {
 
   def apply(loc: Option[URL]): Iteratee[Array[Byte],Jena#Graph] =
     Iteratee.fold[Array[Byte], RdfXmlFeeder](new RdfXmlFeeder(loc)) {
-      (graph, bytes) =>
-        if (graph.feeder.needMoreInput()) {
-          graph.feeder.feedInput(bytes, 0, bytes.length)
+      (feeder, bytes) =>
+        if (feeder.feeder.needMoreInput()) {
+          feeder.feeder.feedInput(bytes, 0, bytes.length)
         } else throw new Throwable("ERROR: The feeder could not take any  more input for " + loc)
 
         //should one check if asyncParser needs more input?
-        graph.asyncParser.parse()
-        graph
+        feeder.asyncParser.parse()
+        feeder
     }.map(_.model.getGraph)
 
 
