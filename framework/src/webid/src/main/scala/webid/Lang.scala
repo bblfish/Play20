@@ -5,7 +5,7 @@
 package org.w3.readwriteweb
 
 import scala.None
-import org.w3.rdf._
+import org.w3.banana._
 
 
 object Lang {

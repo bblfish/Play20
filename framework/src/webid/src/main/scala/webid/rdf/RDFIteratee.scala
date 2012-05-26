@@ -1,16 +1,16 @@
 package org.w3.play.rdf
 
 import java.io._
-import play.api.libs.iteratee.Iteratee
 import java.net.URL
-import play.api.libs.concurrent.Akka
 import com.hp.hpl.jena.rdf.model.{ModelFactory, Model}
-import org.w3.rdf.jena.Jena
+import org.w3.banana.jena.Jena
 import com.hp.hpl.jena.rdf.arp.SAX2Model
 import patch.AsyncJenaParser
 import com.fasterxml.aalto.stax.InputFactoryImpl
 import com.fasterxml.aalto.{AsyncXMLStreamReader, AsyncInputFeeder}
-import org.w3.rdf._
+import org.w3.banana._
+import play.api.libs.iteratee.Iteratee
+import play.api.libs.concurrent.Akka
 
 trait RDFIteratee[Rdf <: RDF] {
 

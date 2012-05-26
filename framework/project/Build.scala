@@ -116,7 +116,7 @@ object PlayBuild extends Build {
       resolvers ++= Seq(typesafe, bblfish)
     )
   ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*).
-    dependsOn(PlayTestProject)
+    dependsOn(PlayProject, PlayTestProject)
 
 
     val Root = Project(
@@ -134,7 +134,7 @@ object PlayBuild extends Build {
         )
     ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*).
       dependsOn(PlayProject).
-      aggregate(AnormProject, TemplatesProject, PlayProject, SbtPluginProject, ConsoleProject, PlayTestProject)
+      aggregate(AnormProject, TemplatesProject, PlayProject, SbtPluginProject, ConsoleProject, PlayTestProject, WebIDProject)
 
     object BuildSettings {
 
@@ -178,12 +178,12 @@ object PlayBuild extends Build {
         val playLocalRepository = Resolver.file("Play Local Repository", file("../repository/local"))(Resolver.ivyStylePatterns) 
         
         val typesafe = "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
-        
         val typesafeReleases = "Typesafe Releases Repository" at "http://repo.typesafe.com/typesafe/maven-releases/"
         val typesafeSnapshot = "Typesafe Snapshots Repository" at "http://repo.typesafe.com/typesafe/maven-snapshots/"
         val bblfish = "BabelFish Repository" at "http://bblfish.net/work/repo/snapshots/"
+        val sonatype = "Sonatype Release" at "https://oss.sonatype.org/content/repositories/snapshots/"
 
-        val playRepository = if (buildVersion.endsWith("SNAPSHOT")) typesafeSnapshot else typesafeReleases
+      val playRepository = if (buildVersion.endsWith("SNAPSHOT")) typesafeSnapshot else typesafeReleases
         
         val typesafeIvyReleases = Resolver.url("Typesafe Ivy Releases Repository", url("http://repo.typesafe.com/typesafe/ivy-releases/"))(Resolver.ivyStylePatterns) 
         val typesafeIvySnapshot = Resolver.url("Typesafe Ivy Snapshots Repository", url("http://repo.typesafe.com/typesafe/ivy-snapshots/"))(Resolver.ivyStylePatterns) 
@@ -328,7 +328,7 @@ object PlayBuild extends Build {
         )
 
         val webIdDependencies = Seq(
-          "org.w3"                            %%   "jena"                     % "0.1-SNAPSHOT",
+          "org.w3"                            %%   "banana-jena"              % "0.1-SNAPSHOT",
           "net.rootdev"                       % "java-rdfa"                   % "0.4.2-RC2",
           "nu.validator.htmlparser"           % "htmlparser"                  % "1.2.1"
         )

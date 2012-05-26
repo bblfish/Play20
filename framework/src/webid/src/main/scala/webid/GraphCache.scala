@@ -33,7 +33,7 @@ import java.net.{ConnectException, URL}
 import scalaz.{Scalaz, Validation}
 import org.w3.play.rdf.{RDFIteratee, JenaSyncRDFIteratee, JenaRdfXmlAsync}
 import play.api.libs.iteratee.{Iteratee, Input}
-import org.w3.rdf.jena.{JenaOperations, Jena}
+import org.w3.banana.jena.{JenaOperations, Jena}
 
 
 //import java.util.concurrent.TimeUnit
@@ -54,7 +54,7 @@ import com.hp.hpl.jena.rdf.arp.SAX2Model
 import java.io._
 import play.api.libs.concurrent.{PurePromise, Akka, Promise}
 import org.w3.readwriteweb.util.SpyInputStream
-import org.w3.rdf._
+import org.w3.banana._
 
 
 /**
@@ -130,7 +130,9 @@ class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf], val serializers: Seria
   // we can't currently accept */* as we don't have GRDDL implemented
 
   //we need to tell the model about the content type
-  def fetch(u: URL): Promise[Rdf#Graph] = WS.url(u.toString).
+  def fetch(u: URL): Promise[Rdf#Graph] ={
+    
+  val prom= WS.url(u.toString).
       withHeaders("Accept" -> "application/rdf+xml,text/turtle,application/xhtml+xml;q=0.8,text/html;q=0.7,text/n3;q=0.2").
       get { response =>
         val lang = response.headers.get("Content-Type").map(_.head) match {
@@ -145,7 +147,9 @@ class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf], val serializers: Seria
           case None => new URL(u.getProtocol, u.getAuthority, u.getPort, u.getPath)
         }
         serializers.iteratee4(lang)(Some(loc))
-    }.map{ case (it,graph) => graph}
+    }
+    prom.flatMap(_.run)
+  }
 
     //      request.>+>[Validation[Throwable, Model]](res =>  {
 //      res >:> { headers =>
