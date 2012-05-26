@@ -2,7 +2,7 @@ logLevel := Level.Warn
 
 resolvers += Classpaths.typesafeResolver
 
-addSbtPlugin("com.typesafe.sbtscalariform" % "sbtscalariform" % "0.3.0")
+addSbtPlugin("com.typesafe.sbtscalariform" % "sbtscalariform" % "0.3.1")
 
 resolvers += "sbt-idea-repo" at "http://mpeltonen.github.com/maven/"
 
