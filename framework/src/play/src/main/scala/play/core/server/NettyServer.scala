@@ -136,22 +136,9 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[I
 }
 
 object noCATrustManager extends X509TrustManager {
-
   val nullArray = Array[X509Certificate]()
-
-  //  for Java 7 use X509ExtendedTrustManager and these methods
-  //      def checkClientTrusted(chain: Array[X509Certificate], authType: String, socket: Socket) {}
-  //
-  //      def checkClientTrusted(chain: Array[X509Certificate], authType: String, engine: SSLEngine) {}
-
-  //      def checkServerTrusted(chain: Array[X509Certificate], authType: String, socket: Socket) {}
-  //
-  //      def checkServerTrusted(chain: Array[X509Certificate], authType: String, engine: SSLEngine) {}
-
   def checkClientTrusted(x509Certificates: Array[X509Certificate], s: String) {}
-
   def checkServerTrusted(x509Certificates: Array[X509Certificate], s: String) {}
-
   def getAcceptedIssuers() = nullArray
 }
 
@@ -220,7 +207,6 @@ object NettyServer {
    * @param args
    */
   def main(args: Array[String]) {
-    System.out.println("hello")
     args.headOption.orElse(
       Option(System.getProperty("user.dir"))).map(new File(_)).filter(p => p.exists && p.isDirectory).map { applicationPath =>
         createServer(applicationPath).getOrElse(System.exit(-1))
