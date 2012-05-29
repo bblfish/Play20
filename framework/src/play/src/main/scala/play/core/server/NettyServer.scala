@@ -58,7 +58,11 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[I
         val kmf = KeyManagerFactory.getInstance("SunX509")
         kmf.init(keyStore, FakeKeyStore.getCertificatePassword)
         val sslContext = SSLContext.getInstance("TLS")
-        sslContext.init(kmf.getKeyManagers, Array(noCATrustManager), new SecureRandom())
+        val tm = Option(System.getProperty("https.server.clientTrust")).map{
+          case "noCA" =>Array[TrustManager](noCATrustManager)
+          case path => null //for the moment
+        }.getOrElse(null)
+        sslContext.init(kmf.getKeyManagers, tm, new SecureRandom())
         val sslEngine = sslContext.createSSLEngine
         sslEngine.setUseClientMode(false)
         newPipeline.addLast("ssl", new SslHandler(sslEngine))

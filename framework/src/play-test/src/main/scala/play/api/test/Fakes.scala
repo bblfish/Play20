@@ -3,6 +3,7 @@ package play.api.test;
 import play.api.mvc._
 import org.codehaus.jackson.JsonNode
 import play.api.libs.json.JsValue
+import play.api.libs.concurrent.Promise
 
 /**
  * Fake HTTP headers implementation.
@@ -92,7 +93,7 @@ case class FakeRequest[A](method: String, uri: String, headers: FakeHeaders, bod
     copy(body = AnyContentAsFormUrlEncoded(data.groupBy(_._1).mapValues(_.map(_._2))))
   }
 
-  def certs = IndexedSeq.empty 
+  def certs = Promise.pure(IndexedSeq.empty)
 
   /**
    * Sets a JSON body to this request.

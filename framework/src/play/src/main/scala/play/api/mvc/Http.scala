@@ -1,7 +1,8 @@
 package play.api.mvc {
 
   import play.api._
-  import play.api.libs.iteratee._
+import libs.concurrent.Promise
+import play.api.libs.iteratee._
   import play.api.libs.Crypto
 
   import scala.annotation._
@@ -48,7 +49,7 @@ package play.api.mvc {
      * The X509 client certs
      * @return a certificate chain
      */
-    def certs: IndexedSeq[Certificate]
+    def certs: Promise[Seq[Certificate]]
 
     /**
      * The client IP address.
