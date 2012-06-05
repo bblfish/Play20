@@ -2,7 +2,7 @@
  * Copyright (c) 2011 W3C under the W3C licence defined at http://opensource.org/licenses/W3C
  */
 
-package org.w3.readwriteweb
+package org.w3.readwriteweb.play
 
 import scala.None
 import org.w3.banana._

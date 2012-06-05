@@ -113,7 +113,7 @@ object PlayBuild extends Build {
       unmanagedJars in Compile += compilerJar,
       scalacOptions ++= Seq("-Xlint", "-deprecation", "-unchecked", "-encoding", "utf8"),
       javacOptions ++= Seq("-encoding", "utf8"),
-      resolvers ++= Seq(typesafe, bblfish)
+      resolvers ++= Seq(localRepository, bblfish, typesafe)
     )
   ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*).
     dependsOn(PlayProject, PlayTestProject)
@@ -129,8 +129,12 @@ object PlayBuild extends Build {
             buildRepositoryTask,
             distTask,
             generateAPIDocsTask,
-            publish <<= (publish in PlayProject, publish in TemplatesProject, publish in AnormProject, publish in SbtPluginProject, publish in ConsoleProject, publish in PlayTestProject) map { (_,_,_,_,_,_) => },
-            publishLocal <<= (publishLocal in PlayProject, publishLocal in TemplatesProject, publishLocal in AnormProject, publishLocal in SbtPluginProject, publishLocal in ConsoleProject, publishLocal in PlayTestProject) map { (_,_,_,_,_,_) => }
+            publish <<= (publish in PlayProject, publish in TemplatesProject, publish in AnormProject,
+              publish in SbtPluginProject, publish in ConsoleProject, publish in PlayTestProject,
+              publish in WebIDProject) map { (_,_,_,_,_,_,_) => },
+            publishLocal <<= (publishLocal in PlayProject, publishLocal in TemplatesProject,
+              publishLocal in AnormProject, publishLocal in SbtPluginProject, publishLocal in ConsoleProject,
+              publishLocal in PlayTestProject, publishLocal in WebIDProject) map { (_,_,_,_,_,_,_) => }
         )
     ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*).
       dependsOn(PlayProject).
@@ -175,8 +179,9 @@ object PlayBuild extends Build {
     object Resolvers {
         import BuildSettings._
         
-        val playLocalRepository = Resolver.file("Play Local Repository", file("../repository/local"))(Resolver.ivyStylePatterns) 
-        
+        val playLocalRepository = Resolver.file("Play Local Repository", file("../repository/local"))(Resolver.ivyStylePatterns)
+        val localRepository = Resolver.file("User's Local Repository",
+          file(Path.userHome+"/.ivy2/local/"))(Resolver.ivyStylePatterns)
         val typesafe = "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
         val typesafeReleases = "Typesafe Releases Repository" at "http://repo.typesafe.com/typesafe/maven-releases/"
         val typesafeSnapshot = "Typesafe Snapshots Repository" at "http://repo.typesafe.com/typesafe/maven-snapshots/"
@@ -252,7 +257,7 @@ object PlayBuild extends Build {
             ,
             
             "oauth.signpost"                    %    "signpost-core"            %   "1.2.1.1",
-            "com.codahale"                      %   "jerkson_2.9.1"                  %   "0.5.0",
+            "com.codahale"                      %   "jerkson_2.9.1"             %   "0.5.0",
             
             ("org.reflections"                  %    "reflections"              %   "0.9.6" notTransitive())
               .exclude("com.google.guava", "guava")
@@ -328,9 +333,10 @@ object PlayBuild extends Build {
         )
 
         val webIdDependencies = Seq(
-          "org.w3"                            %%   "banana-jena"              % "0.1-SNAPSHOT",
-          "net.rootdev"                       % "java-rdfa"                   % "0.4.2-RC2",
-          "nu.validator.htmlparser"           % "htmlparser"                  % "1.2.1"
+          "org.w3"                            %% "banana-jena"              % "0.2-SNAPSHOT",
+          "net.rootdev"                       %  "java-rdfa"                   % "0.4.2-RC2",
+          "nu.validator.htmlparser"           %  "htmlparser"                  % "1.2.1",
+          "com.typesafe"                      %% "play-mini"                  % "2.0.1"
         )
 
     }

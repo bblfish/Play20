@@ -1,61 +1,13 @@
-/*
-* Copyright (c) 2011 Henry Story (bblfish.net)
-* under the MIT licence defined
-*    http://www.opensource.org/licenses/mit-license.html
-*
-* Permission is hereby granted, free of charge, to any person obtaining a copy of
-* this software and associated documentation files (the "Software"), to deal in the
-* Software without restriction, including without limitation the rights to use, copy,
-* modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
-* and to permit persons to whom the Software is furnished to do so, subject to the
-* following conditions:
-*
-* The above copyright notice and this permission notice shall be included in all
-* copies or substantial portions of the Software.
-*
-* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-* INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-* PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-* HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-* OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/
+package org.w3.play.rdf
 
-package org.w3.readwriteweb
-
-//import _root_.dispatch.Handler
-//import _root_.dispatch.Http
-//import _root_.dispatch.thread
-//import _root_.dispatch.url._
-//import org.apache.http.MethodNotSupportedException
-//import org.w3.readwriteweb.util._
-import java.net.{ConnectException, URL}
-import scalaz.{Scalaz, Validation}
-import org.w3.play.rdf.{RDFIteratee, JenaSyncRDFIteratee, JenaRdfXmlAsync}
-import play.api.libs.iteratee.{Iteratee, Input}
+import org.w3.banana.{RDFXML, RDFSerialization, RDFOperations, RDF}
 import org.w3.banana.jena.{JenaOperations, Jena}
-
-
-//import java.util.concurrent.TimeUnit
-//import com.weiglewilczek.slf4s.Logging
-//import com.google.common.cache._
-//import com.weiglewilczek.slf4s.Logging
-//import org.w3.readwriteweb.Lang._
-//import org.w3.readwriteweb.{RDFXML, Lang, CacheControl, ResourceManager}
-//import org.w3.readwriteweb.util._
-import patch.AsyncJenaParser
+import java.net.URL
+import play.api.libs.iteratee.Iteratee
+import play.api.libs.concurrent.Promise
 import play.api.libs.ws.WS
-import com.hp.hpl.jena.graph.Graph
-import com.hp.hpl.jena.rdf.model.{ModelFactory, Model}
-import com.fasterxml.aalto.stax.InputFactoryImpl
-import com.fasterxml.aalto.{AsyncInputFeeder, AsyncXMLStreamReader}
-import com.hp.hpl.jena.rdf.arp.SAX2Model
-//import akka.actor.IO.Done
-import java.io._
-import play.api.libs.concurrent.{PurePromise, Akka, Promise}
-import org.w3.readwriteweb.util.SpyInputStream
-import org.w3.banana._
-
+import org.w3.readwriteweb.play.Lang
+import org.w3.play._
 
 /**
  * Fetch resources on the Web and cache them
@@ -71,7 +23,6 @@ import org.w3.banana._
  */
 class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf], val serializers: SerializerMap[Rdf])  {
 //  import dispatch._
-  import Scalaz._
   import webid.Logger.log
   import play.api.Play.current
 
@@ -130,8 +81,8 @@ class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf], val serializers: Seria
   // we can't currently accept */* as we don't have GRDDL implemented
 
   //we need to tell the model about the content type
-  def fetch(u: URL): Promise[Rdf#Graph] ={
-    
+  def fetch(u: URL): Promise[Either[Exception,Rdf#Graph]] ={
+
   val prom= WS.url(u.toString).
       withHeaders("Accept" -> "application/rdf+xml,text/turtle,application/xhtml+xml;q=0.8,text/html;q=0.7,text/n3;q=0.2").
       get { response =>
@@ -183,6 +134,22 @@ class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf], val serializers: Seria
 //  override def finalize() { http.shutdown() }
 }
 
+/**
+ * For Jena based projects this is a good graph cacher.
+ */
+object JenaGraphCache extends GraphCache[Jena](JenaOperations, JenaSerializerMap)
+
+/**
+ * A set of serialisers that are currently efficient for Jena.
+ * Contains an Asynchronous RDFXML serialiser and all the others are synchronous.
+ */
+object JenaSerializerMap extends SerializerMap[Jena] {
+  def iteratee4(lang: RDFSerialization)(loc: Option[URL]) = lang match {
+    case RDFXML => JenaRdfXmlAsync(loc)
+    //case TURTLE => use my async turtle parser in some way similar as above
+    case otherMime => (new JenaSyncRDFIteratee(otherMime))(loc)
+  }
+}
 
 /**
  * Implementations map RDFSerialisation formats to Iteratees that can parse those formats
@@ -200,26 +167,5 @@ trait SerializerMap[Rdf <: RDF] {
    * @param location the location of the document, for relative url resolution
    * @return  an Iteratee that will be able to parse the document
    */
-  def iteratee4(lang: RDFSerialization)(location: Option[URL]):  Iteratee[Array[Byte],Rdf#Graph]
+  def iteratee4(lang: RDFSerialization)(location: Option[URL]): Iteratee[Array[Byte], Either[Exception,Rdf#Graph]]
 }
-
-
-/**
- * A set of serialisers that are currently efficient for Jena.
- * Contains an Asynchronous RDFXML serialiser and all the others are synchronous.
- */
-object JenaSerializerMap extends SerializerMap[Jena] {
-  def iteratee4(lang: RDFSerialization)(loc: Option[URL]) = lang match {
-    case RDFXML => JenaRdfXmlAsync(loc)
-    //case TURTLE => use my async turtle parser in some way similar as above
-    case otherMime => new JenaSyncRDFIteratee(otherMime)(loc)
-  }
-}
-
-/**
- * For Jena based projects this is a good graph cacher.
- */
-object JenaGraphCache extends GraphCache[Jena](JenaOperations,JenaSerializerMap)
-
-//object NoCachEntry extends Exception
-
