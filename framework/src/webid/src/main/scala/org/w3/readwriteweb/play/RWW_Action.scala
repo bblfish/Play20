@@ -1,15 +1,19 @@
 package org.w3.readwriteweb.play
 
 import play.api.mvc._
-import org.w3.banana.{BlockingWriter, RDFXML, RDFOperations, RDF}
+import org.w3.banana._
 import org.w3.play.rdf.{JenaSerializerMap, SerializerMap}
 import java.net.URL
 import scala.Some
 import org.w3.banana.jena._
 import play.api.http.{ContentTypeOf, Writeable}
-import java.io.ByteArrayOutputStream
+import java.io.{File, ByteArrayOutputStream}
 import play.api.libs.concurrent.Akka
 import scala.Some
+import akka.actor.{Props, ActorSystem}
+import scala.Some
+import akka.util.Timeout
+import scalaz.Validation
 
 
 /**
@@ -22,6 +26,20 @@ import scala.Some
 //}
 
 object ReadWriteWeb_App extends Controller {
+  import akka.pattern.ask
+  import play.api.libs.concurrent._
+
+  val system = ActorSystem("MySystem")
+  implicit val timeout = Timeout(10 * 1000)
+
+//  if this class were shipped as a plugin, then the code below might work.
+//  But it is a bit odd given that you have to specify whether something is secure or not.
+//
+//  lazy val url = call.absoluteURL(true)
+//  def call : Call = org.w3.readwriteweb.play.routes.ReadWriteWeb_App.get
+
+  val url = new URL("https://localhost:8443/2012/")
+  lazy val rwwActor = system.actorOf(Props(new ResourceManager(new File("test_www"), url)), name = "rwwActor")
 
   def writerFor(req: RequestHeader) = req.accept.collectFirst {
     case "application/rdf+xml" =>  (writeable(JenaRdfXmlWriter),ContentTypeOf[Jena#Graph](Some("application/rdf+xml")))
@@ -37,20 +55,46 @@ object ReadWriteWeb_App extends Controller {
     }
 
 
-  def get = Action {
-    Ok("hello")
+  def get(path: String) = Action { request =>
+    System.out.println("in GET with path="+request.path)
+    val future = for (answer <- rwwActor ask Request("GET", path ) mapTo manifest[Validation[BananaException, Jena#Graph]])
+    yield {
+         answer.fold(
+          e => ExpectationFailed(e.getMessage),
+          g => { val (wr,ct) = writerFor(request); Ok(g)(wr,ct) }
+         )
+    }
+    Async {
+     future.asPromise
+    }
+
   }
 
-  def put = Action(jenaRdfBodyParser) {
+  def put(path: String) = Action(jenaRdfBodyParser) {
     request =>
-      import play.api.Play.current
-      val p = Akka.future {
-        System.out.println("triple num= " + request.body.size())
-        val (wr,ct) = writerFor(request)
-        Ok(request.body)(wr, ct)
+      System.out.println("in put with path="+path)
+      val future = for (answer <- rwwActor ask PutGraph[Jena](path,request.body) mapTo manifest[Validation[BananaException, Unit]])
+      yield {
+        answer.fold(
+          e => ExpectationFailed(e.getMessage),
+          _ =>  Ok("Succeeded")
+        )
       }
       Async {
-        p
+        future.asPromise
+      }
+  }
+
+  def post = Action(jenaRdfBodyParser) {
+    request =>
+      import play.api.Play.current
+      Async {
+        Akka.future {
+        //this is a good piece of code for a future, as serialising the graph is very fast
+          System.out.println("triple num== " + request.body.size())
+          val (wr,ct) = writerFor(request)
+          Ok(request.body)(wr,ct)
+        }
       }
   }
 

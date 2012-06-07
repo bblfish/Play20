@@ -1,5 +1,3 @@
-resolvers += "local" at "file:///Users/hjs/.ivy2/local/"
-
 logLevel := Level.Warn
 
 resolvers += Classpaths.typesafeResolver

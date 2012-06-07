@@ -113,7 +113,7 @@ object PlayBuild extends Build {
       unmanagedJars in Compile += compilerJar,
       scalacOptions ++= Seq("-Xlint", "-deprecation", "-unchecked", "-encoding", "utf8"),
       javacOptions ++= Seq("-encoding", "utf8"),
-      resolvers ++= Seq(localRepository, bblfish, typesafe)
+      resolvers ++= Seq(localRepository, typesafe)
     )
   ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*).
     dependsOn(PlayProject, PlayTestProject)
@@ -333,7 +333,7 @@ object PlayBuild extends Build {
         )
 
         val webIdDependencies = Seq(
-          "org.w3"                            %% "banana-jena"              % "0.2-SNAPSHOT",
+          "org.w3"                            %% "banana-jena"                % "0.2hjs-SNAPSHOT",
           "net.rootdev"                       %  "java-rdfa"                   % "0.4.2-RC2",
           "nu.validator.htmlparser"           %  "htmlparser"                  % "1.2.1",
           "com.typesafe"                      %% "play-mini"                  % "2.0.1"
