@@ -3,7 +3,7 @@ package org.w3.readwriteweb.play
 import akka.actor.{InvalidActorNameException, Props, ActorRef, Actor}
 import org.w3.banana._
 import java.io.{FileOutputStream, File}
-import jena.{JenaTurtleWriter, JenaReaderFactory, JenaOperations}
+import jena.{Jena, JenaTurtleWriter, JenaReaderFactory, JenaOperations}
 import org.w3.readwriteweb.play.Request
 import akka.actor.InvalidActorNameException
 import java.net.URL
@@ -37,7 +37,7 @@ class ResourceManager(baseDirectory: File, baseUrl: URL) extends Actor {
       val resourceActorRef = getOrCreateResourceActor(path)
       resourceActorRef.forward(req)
     }
-    case req @ PutGraph(path,_)=>  {
+    case req @ Put(path,_)=>  {
       val resourceActorRef = getOrCreateResourceActor(path)
       resourceActorRef.forward(req)
     }
@@ -46,7 +46,7 @@ class ResourceManager(baseDirectory: File, baseUrl: URL) extends Actor {
 }
 
 case class Request(method: String, path: String )
-case class PutGraph[Rdf<:RDF](path: String, graph: Rdf#Graph)
+case class Put[Rdf<:RDF](path: String, content: RwwContent)
 
 abstract class ResourceActor[Rdf<:RDF](ops: RDFOperations[Rdf],
                               file: File,
@@ -66,11 +66,11 @@ abstract class ResourceActor[Rdf<:RDF](ops: RDFOperations[Rdf],
 
   protected def receive: Actor.Receive = {
     case req @ Request("GET",path) => {
-      System.out.println("reqceive message "+req)
+      System.out.println("receive message "+req)
       graph = reader(ser).read(file,url.toString)
       sender ! graph
     }
-    case pg @ PutGraph(path,model: Rdf#Graph) => {
+    case pg @ Put(path,GraphRwwContent(model: Rdf#Graph)) => {
       sender ! WrappedThrowable.fromTryCatch{
         if (parent.isDirectory) true
         else parent.mkdirs()
@@ -92,7 +92,7 @@ abstract class ResourceActor[Rdf<:RDF](ops: RDFOperations[Rdf],
   }
 }
 
-class JenaResourceActor(file: File, path: String, url: URL) extends ResourceActor(JenaOperations,file,path,url) {
+class JenaResourceActor(file: File, path: String, url: URL) extends ResourceActor[Jena](JenaOperations,file,path,url) {
 
   def reader[T <: RDFSerialization](ser: T) = JenaReaderFactory.find(ser).getOrElse(sys.error("Cannot read serialisations with Sesame"))
 

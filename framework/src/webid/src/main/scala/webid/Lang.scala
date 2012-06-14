@@ -16,7 +16,7 @@ object Lang {
 
   val default = RDFXML
 
-  def apply(contentType: String): Option[RDFSerialization] =
+  def apply(contentType: String): Option[Language] =
     contentType.trim.toLowerCase match {
       case "text/n3" => Some(N3)
       case "text/rdf+n3"=>Some(N3)
@@ -24,26 +24,21 @@ object Lang {
       case "application/rdf+xml" => Some(RDFXML)
       case "text/html" => Some(RDFaHTML)
       case "application/xhtml+xml" => Some(RDFaXHTML)
+      case "application/sparql-query" => Some(SparqL)
       case _ => None
     }
 
-  def apply(cts: Iterable[String]): Option[RDFSerialization] =
+  def apply(cts: Iterable[String]): Option[Language] =
     cts map Lang.apply collectFirst { case Some(lang) => lang }
 
 
-  def contentType(lang: RDFSerialization) = lang match {
+  def contentType(lang: Language) = lang match {
     case RDFXML => "application/rdf+xml"
     case Turtle => "text/turtle"
     case N3 => "text/n3"
     case RDFaXHTML => "application/xhtml+xml"
     case RDFaHTML => "text/html"
+    case SparqL => "application/sparql-query"
   }
 
-  def jenaLang(lang: RDFSerialization) = lang match {
-    case RDFXML => "RDF/XML-ABBREV"
-    case Turtle => "TURTLE"
-    case N3 => "N3"
-    case RDFaHTML => "HTML"
-    case RDFaXHTML => "XHTML"
-  }
 }

@@ -2,7 +2,7 @@ package org.w3.readwriteweb.play
 
 import play.api.mvc._
 import org.w3.banana._
-import org.w3.play.rdf.{JenaSerializerMap, SerializerMap}
+import org.w3.play.rdf.{JenaRDFParserMap, ParserMap}
 import java.net.URL
 import scala.Some
 import org.w3.banana.jena._
@@ -14,6 +14,8 @@ import akka.actor.{Props, ActorSystem}
 import scala.Some
 import akka.util.Timeout
 import scalaz.Validation
+import play.api.libs.iteratee.Done
+import play.api.libs.iteratee.Input.Empty
 
 
 /**
@@ -70,10 +72,14 @@ object ReadWriteWeb_App extends Controller {
 
   }
 
-  def put(path: String) = Action(jenaRdfBodyParser) {
+  def put(path: String) = Action(jenaRwwBodyParser) {
     request =>
       System.out.println("in put with path="+path)
-      val future = for (answer <- rwwActor ask PutGraph[Jena](path,request.body) mapTo manifest[Validation[BananaException, Unit]])
+      val msg = request.body match {
+        case GraphRwwContent(graph) => Put[Jena](path,request.body)
+        case _ => throw new Exception("error")
+      }
+      val future = for (answer <- rwwActor ask msg mapTo manifest[Validation[BananaException, Unit]])
       yield {
         answer.fold(
           e => ExpectationFailed(e.getMessage),
@@ -85,15 +91,21 @@ object ReadWriteWeb_App extends Controller {
       }
   }
 
-  def post = Action(jenaRdfBodyParser) {
+  def post = Action(jenaRwwBodyParser) {
     request =>
       import play.api.Play.current
       Async {
         Akka.future {
         //this is a good piece of code for a future, as serialising the graph is very fast
-          System.out.println("triple num== " + request.body.size())
-          val (wr,ct) = writerFor(request)
-          Ok(request.body)(wr,ct)
+          System.out.println("triple num== " + request.body)
+          request.body match {
+            case GraphRwwContent(graph) => {
+              val (wr,ct) = writerFor(request)
+              Ok(graph.asInstanceOf[Jena#Graph])(wr,ct)
+            }
+            case _ => Ok("received content")
+          }
+
         }
       }
   }
@@ -101,26 +113,55 @@ object ReadWriteWeb_App extends Controller {
 
 }
 
-object jenaRdfBodyParser extends RdfBodyParser(JenaOperations, JenaSerializerMap )
+object jenaRwwBodyParser extends RwwBodyParser[Jena, JenaSPARQL](JenaOperations, JenaSPARQLOperations, JenaRDFParserMap )
 
-class RdfBodyParser[Rdf <: RDF](val ops: RDFOperations[Rdf],
-                                val serializers: SerializerMap[Rdf]) extends BodyParser[Rdf#Graph] {
+
+class RwwBodyParser[Rdf <: RDF, Sparql <: SPARQL](val ops: RDFOperations[Rdf],
+                                val sparqlOps: SPARQLOperations[Rdf, Sparql],
+                                val graphParsers: ParserMap[RDFSerialization, Rdf#Graph]) extends BodyParser[RwwContent] {
 
   import play.api.mvc.Results._
+  import play.api.mvc.BodyParsers.parse
 
-  def apply(rh: RequestHeader) = {
-    val lang = rh.contentType match {
-      case Some(mime) => {
-        Lang(mime.split(";")(0)) getOrElse Lang.default
+  def apply(rh: RequestHeader) =
+    rh.contentType match {
+      case _ if rh.method == "GET" || rh.method == "HEAD" => Done(Right(emptyContent), Empty)
+      case Some("application/sparql-query") => parse.text(rh).map {
+        _.right.map(q => QueryRwwContent(sparqlOps.Query(q)))
       }
-      case None => RDFXML //todo: it would be better to try to do a bit of guessing in this case by looking at content
+      case Some(RdfLang(mime)) => graphParsers.iteratee4(mime)(Some(new URL("http://localhost:9000/" + rh.uri))).map {
+        case Left(e) => Left(BadRequest("cought " + e))
+        case Right(graph) => Right(GraphRwwContent(graph))
+      }
+      case Some(mime) => parse.raw(rh).map {
+        _.right.map(rb => BinaryRwwContent(rb, mime))
+      }
+      case None => Done(Left(BadRequest("missing Content-type header. Please set the content type in the HTTP header " +
+        " of your message ")), Empty)
     }
-    serializers.iteratee4(lang)(Some(new URL("http://localhost:9000/"+rh.uri))).map{
-      _.left.map(e=>BadRequest("cought "+e))
-    }
-  }
+
 
   override def toString = "BodyParser(" + ops.toString + ")"
 
 }
+
+
+object RdfLang {
+  def unapply(mime: String) = mime match {
+    case "application/rdf+xml" => Some(RDFXML)
+    case "text/turtle" => Some(Turtle)
+  }
+}
+
+trait RwwContent
+
+case object emptyContent extends RwwContent
+
+case class GraphRwwContent[Rdf<:RDF](graph: Rdf#Graph) extends RwwContent
+
+case class QueryRwwContent[Sparql<:SPARQL](query: Sparql#Query) extends RwwContent
+
+case class BinaryRwwContent(binary: RawBuffer, mime: String) extends RwwContent
+
+
 

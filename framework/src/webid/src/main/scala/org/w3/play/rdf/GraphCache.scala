@@ -21,7 +21,7 @@ import org.w3.play._
  * @created: 12/10/2011
  *
  */
-class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf], val serializers: SerializerMap[Rdf])  {
+class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf], val serializers: ParserMap[RDFSerialization,Rdf#Graph])  {
 //  import dispatch._
   import webid.Logger.log
   import play.api.Play.current
@@ -86,9 +86,9 @@ class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf], val serializers: Seria
   val prom= WS.url(u.toString).
       withHeaders("Accept" -> "application/rdf+xml,text/turtle,application/xhtml+xml;q=0.8,text/html;q=0.7,text/n3;q=0.2").
       get { response =>
-        val lang = response.headers.get("Content-Type").map(_.head) match {
-          case Some(mime) => {
-            Lang(mime.split(";")(0)) getOrElse Lang.default
+        val lang: RDFSerialization = response.headers.get("Content-Type").map(_.head) match {
+          case Some(mime) => { import RDFSerialization._
+            fromMime(extract(mime)) getOrElse Lang.default
           }
           case None => RDFXML //todo: it would be better to try to do a bit of guessing in this case by looking at content
         }
@@ -137,13 +137,13 @@ class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf], val serializers: Seria
 /**
  * For Jena based projects this is a good graph cacher.
  */
-object JenaGraphCache extends GraphCache[Jena](JenaOperations, JenaSerializerMap)
+object JenaGraphCache extends GraphCache[Jena](JenaOperations, JenaRDFParserMap)
 
 /**
  * A set of serialisers that are currently efficient for Jena.
  * Contains an Asynchronous RDFXML serialiser and all the others are synchronous.
  */
-object JenaSerializerMap extends SerializerMap[Jena] {
+object JenaRDFParserMap extends ParserMap[RDFSerialization,Jena#Graph] {
   def iteratee4(lang: RDFSerialization)(loc: Option[URL]) = lang match {
     case RDFXML => JenaRdfXmlAsync(loc)
     //case TURTLE => use my async turtle parser in some way similar as above
@@ -152,20 +152,24 @@ object JenaSerializerMap extends SerializerMap[Jena] {
 }
 
 /**
- * Implementations map RDFSerialisation formats to Iteratees that can parse those formats
- * The serialisers can be synchronous or asynchronous, thought they MUST take care of execting their
+ * Implementations map mime types to Iteratees that can parse those formats
+ * The serialisers can be synchronous or asynchronous, thought they MUST take care of extracting their
  * logic in seperate thread pools if they are synchronous. It may be better to send the tasks to
  * actors for asynchronous parsers too.
  *
- * @tparam Rdf  the type of the Graph returned
+ * @tparam Lang some type to represent the language to be parsed
+ * @tparam T    the type of object returned by the iteratee
  */
-trait SerializerMap[Rdf <: RDF] {
+trait ParserMap[Lang,T] {
 
   /**
-   *
+   * todo: get encoding
    * @param lang the serialisation type required
    * @param location the location of the document, for relative url resolution
    * @return  an Iteratee that will be able to parse the document
    */
-  def iteratee4(lang: RDFSerialization)(location: Option[URL]): Iteratee[Array[Byte], Either[Exception,Rdf#Graph]]
+  def iteratee4(lang: Lang)(location: Option[URL]): Iteratee[Array[Byte], Either[Exception,T]]
 }
+
+
+
