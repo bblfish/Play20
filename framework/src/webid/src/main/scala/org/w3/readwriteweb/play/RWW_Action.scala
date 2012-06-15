@@ -127,7 +127,12 @@ class RwwBodyParser[Rdf <: RDF, Sparql <: SPARQL](val ops: RDFOperations[Rdf],
     rh.contentType match {
       case _ if rh.method == "GET" || rh.method == "HEAD" => Done(Right(emptyContent), Empty)
       case Some("application/sparql-query") => parse.text(rh).map {
-        _.right.map(q => QueryRwwContent(sparqlOps.Query(q)))
+        _.right.flatMap { sparql =>
+            sparqlOps.Query(sparql).fold(
+              fail => Left(BadRequest("could not parse the SPARQL sent: " + sparql)),
+              res =>  Right(QueryRwwContent(res))
+            )
+        }
       }
       case Some(RdfLang(mime)) => graphParsers.iteratee4(mime)(Some(new URL("http://localhost:9000/" + rh.uri))).map {
         case Left(e) => Left(BadRequest("cought " + e))
