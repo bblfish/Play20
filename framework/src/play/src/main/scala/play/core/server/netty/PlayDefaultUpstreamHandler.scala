@@ -36,7 +36,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
   import PlayDefaultUpstreamHandler.logger
 
   override def exceptionCaught(ctx: ChannelHandlerContext, e: ExceptionEvent) {
-    logger.warn("Exception caught in Netty", e.getCause)
+    Logger.trace("Exception caught in Netty", e.getCause)
     e.getChannel.close()
   }
 
@@ -110,7 +110,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
 
       case nettyHttpRequest: HttpRequest =>
 
-        logger.trace("Http request received by netty: " + nettyHttpRequest)
+        Logger("play").trace("Http request received by netty: " + nettyHttpRequest)
 
         val keepAlive = isKeepAlive(nettyHttpRequest)
         val websocketableRequest = websocketable(nettyHttpRequest)
@@ -137,7 +137,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
 
         //mapping netty request to Play's
 
-        val requestHeader = new RequestHeader with certs {
+        val requestHeader = new RequestHeader {
           def uri = nettyHttpRequest.getUri
           def path = nettyUri.getPath
           def method = nettyHttpRequest.getMethod.getName
@@ -156,15 +156,17 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
               case AsyncResult(p) => p.extend1 {
                 case Redeemed(v) => handle(v)
                 case Thrown(e) => {
-                  logger.error("Waiting for a promise, but got an error: " + e.getMessage, e)
-                  handle(Results.InternalServerError)
+                  server.applicationProvider.get match {
+                    case Right(app) => handle(app.handleError(requestHeader, e))
+                    case Left(_) => handle(Results.InternalServerError)
+                  }
                 }
               }
 
               case r @ SimpleResult(ResponseHeader(status, headers), body) if (!websocketableRequest.check) => {
                 val nettyResponse = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(status))
 
-                logger.trace("Sending simple result: " + r)
+                Logger("play").trace("Sending simple result: " + r)
 
                 // Set response headers
                 headers.filterNot(_ == (CONTENT_LENGTH, "-1")).foreach {
@@ -231,7 +233,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
 
               case r @ ChunkedResult(ResponseHeader(status, headers), chunks) => {
 
-                logger.trace("Sending chunked result: " + r)
+                Logger("play").trace("Sending chunked result: " + r)
 
                 val nettyResponse = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(status))
 
@@ -300,7 +302,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
           //execute normal action
           case Right((action: Action[_], app)) => {
 
-            logger.trace("Serving this request with: " + action)
+            Logger("play").trace("Serving this request with: " + action)
 
             val bodyParser = action.parser
 
@@ -355,7 +357,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
                 .flatMap(it => it.run)
                 .map {
                   _.right.map(b =>
-                    new Request[action.BODY_CONTENT] with certs {
+                    new Request[action.BODY_CONTENT] {
                       def uri = nettyHttpRequest.getUri
                       def path = nettyUri.getPath
                       def method = nettyHttpRequest.getMethod.getName
@@ -369,15 +371,15 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
 
             eventuallyResultOrRequest.extend(_.value match {
               case Redeemed(Left(result)) => {
-                logger.trace("Got direct result from the BodyParser: " + result)
+                Logger("play").trace("Got direct result from the BodyParser: " + result)
                 response.handle(result)
               }
               case Redeemed(Right(request)) => {
-                logger.trace("Invoking action with request: " + request)
+                Logger("play").trace("Invoking action with request: " + request)
                 server.invoke(request, response, action.asInstanceOf[Action[action.BODY_CONTENT]], app)
               }
               case error => {
-                logger.error("Cannot invoke the action, eventually got an error: " + error)
+                Logger("play").error("Cannot invoke the action, eventually got an error: " + error)
                 response.handle(Results.InternalServerError)
                 e.getChannel.setReadable(true)
               }
@@ -388,7 +390,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
           //execute websocket action
           case Right((ws @ WebSocket(f), app)) if (websocketableRequest.check) => {
 
-            logger.trace("Serving this request with: " + ws)
+            Logger("play").trace("Serving this request with: " + ws)
 
             try {
               val enumerator = websocketHandshake(ctx, nettyHttpRequest, e)(ws.frameFormatter)

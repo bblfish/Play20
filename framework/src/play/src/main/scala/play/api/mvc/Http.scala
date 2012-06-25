@@ -93,7 +93,7 @@ import play.api.libs.iteratee._
     lazy val acceptLanguages: Seq[play.api.i18n.Lang] = {
       try {
         headers.get(play.api.http.HeaderNames.ACCEPT_LANGUAGE).map { acceptLanguage =>
-          acceptLanguage.split(",").map(l => play.api.i18n.Lang(l.split(";").head)).toSeq
+          acceptLanguage.split("\\s*,\\s*").map(l => play.api.i18n.Lang(l.split(";").head)).toSeq
         }.getOrElse(Nil)
       } catch {
         case e => e.printStackTrace(); Nil
