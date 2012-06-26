@@ -137,7 +137,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
 
         //mapping netty request to Play's
 
-        val requestHeader = new RequestHeader {
+        val requestHeader = new RequestHeader with certs {
           def uri = nettyHttpRequest.getUri
           def path = nettyUri.getPath
           def method = nettyHttpRequest.getMethod.getName
@@ -357,7 +357,7 @@ private[server] class PlayDefaultUpstreamHandler(server: Server, allChannels: De
                 .flatMap(it => it.run)
                 .map {
                   _.right.map(b =>
-                    new Request[action.BODY_CONTENT] {
+                    new Request[action.BODY_CONTENT] with certs {
                       def uri = nettyHttpRequest.getUri
                       def path = nettyUri.getPath
                       def method = nettyHttpRequest.getMethod.getName
