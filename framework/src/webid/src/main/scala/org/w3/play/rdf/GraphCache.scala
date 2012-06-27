@@ -1,13 +1,12 @@
 package org.w3.play.rdf
 
-import org.w3.banana.{RDFXML, RDFSerialization, RDFOperations, RDF}
+import jena.JenaAsync
+import org.w3.banana._
 import org.w3.banana.jena.{JenaOperations, Jena}
 import java.net.URL
-import play.api.libs.iteratee.Iteratee
 import play.api.libs.concurrent.Promise
 import play.api.libs.ws.WS
-import org.w3.readwriteweb.play.Lang
-import org.w3.play._
+import scala.Some
 
 /**
  * Fetch resources on the Web and cache them
@@ -21,12 +20,16 @@ import org.w3.play._
  * @created: 12/10/2011
  *
  */
-class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf], val serializers: ParserMap[RDFSerialization,Rdf#Graph])  {
+class GraphCache[Rdf <: RDF](implicit
+                             val ops: RDFOperations[Rdf],
+                             val iterateeSelector: IterateeSelector[Rdf#Graph])  {
 //  import dispatch._
-  import webid.Logger.log
-  import play.api.Play.current
 
-//use shellac's rdfa parser
+  //  implicit val iterateeSelector: IterateeSelector[Jena#Graph] =
+//    JenaBlockingRDFIteratee.turtleSelector combineWith JenaRdfXmlAsync.rdfxmlSelector
+
+
+  //use shellac's rdfa parser
 //  new net.rootdev.javardfa.jena.RDFaReader  //import rdfa parser
 
 
@@ -83,23 +86,24 @@ class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf], val serializers: Parse
   //we need to tell the model about the content type
   def fetch(u: URL): Promise[Either[Exception,Rdf#Graph]] ={
 
-  val prom= WS.url(u.toString).
-      withHeaders("Accept" -> "application/rdf+xml,text/turtle,application/xhtml+xml;q=0.8,text/html;q=0.7,text/n3;q=0.2").
-      get { response =>
-        val lang: RDFSerialization = response.headers.get("Content-Type").map(_.head) match {
-          case Some(mime) => { import RDFSerialization._
-            fromMime(extract(mime)) getOrElse Lang.default
-          }
-          case None => RDFXML //todo: it would be better to try to do a bit of guessing in this case by looking at content
-        }
+      val prom= WS.url(u.toString).
+          withHeaders("Accept" -> "application/rdf+xml,text/turtle,application/xhtml+xml;q=0.8,text/html;q=0.7,text/n3;q=0.2").
+          get { response =>
+            import MimeType._
+            val lang: MimeType = response.headers.get("Content-Type").map{ mime=>
+              MimeType(normalize(extract(mime.head)))
+            }.getOrElse(MimeType("application/rdf+xml")) //todo: do something better than choose a default encoding!
 
-        val loc = response.headers.get("Content-Location").map(_.head) match {
-          case Some(loc) => new URL(u, loc)
-          case None => new URL(u.getProtocol, u.getAuthority, u.getPort, u.getPath)
+            val loc = response.headers.get("Content-Location").map(_.head) match {
+              case Some(loc) => new URL(u, loc)
+              case None => new URL(u.getProtocol, u.getAuthority, u.getPort, u.getPath)
+            }
+            val interatee = iterateeSelector(lang).get
+            val res = interatee(Some(loc))
+            res
         }
-        serializers.iteratee4(lang)(Some(loc))
-    }
-    prom.flatMap(_.run)
+      val res = prom.flatMap(_.run)
+    res
   }
 
     //      request.>+>[Validation[Throwable, Model]](res =>  {
@@ -137,39 +141,10 @@ class GraphCache[Rdf <: RDF](val ops: RDFOperations[Rdf], val serializers: Parse
 /**
  * For Jena based projects this is a good graph cacher.
  */
-object JenaGraphCache extends GraphCache[Jena](JenaOperations, JenaRDFParserMap)
-
-/**
- * A set of serialisers that are currently efficient for Jena.
- * Contains an Asynchronous RDFXML serialiser and all the others are synchronous.
- */
-object JenaRDFParserMap extends ParserMap[RDFSerialization,Jena#Graph] {
-  def iteratee4(lang: RDFSerialization)(loc: Option[URL]) = lang match {
-    case RDFXML => JenaRdfXmlAsync(loc)
-    //case TURTLE => use my async turtle parser in some way similar as above
-    case otherMime => (new JenaSyncRDFIteratee(otherMime))(loc)
-  }
+object JenaGraphCache {
+  implicit val ops = JenaOperations
+  implicit val selector =  JenaAsync.graphIterateeSelector
+  val apply = new GraphCache[Jena]
 }
-
-/**
- * Implementations map mime types to Iteratees that can parse those formats
- * The serialisers can be synchronous or asynchronous, thought they MUST take care of extracting their
- * logic in seperate thread pools if they are synchronous. It may be better to send the tasks to
- * actors for asynchronous parsers too.
- *
- * @tparam Lang some type to represent the language to be parsed
- * @tparam T    the type of object returned by the iteratee
- */
-trait ParserMap[Lang,T] {
-
-  /**
-   * todo: get encoding
-   * @param lang the serialisation type required
-   * @param location the location of the document, for relative url resolution
-   * @return  an Iteratee that will be able to parse the document
-   */
-  def iteratee4(lang: Lang)(location: Option[URL]): Iteratee[Array[Byte], Either[Exception,T]]
-}
-
 
 

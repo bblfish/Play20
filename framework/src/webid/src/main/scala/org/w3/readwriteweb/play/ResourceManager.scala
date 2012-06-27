@@ -1,15 +1,16 @@
 package org.w3.readwriteweb.play
 
-import akka.actor.{InvalidActorNameException, Props, ActorRef, Actor}
+import akka.actor.{Props, ActorRef, Actor}
 import org.w3.banana._
-import java.io.{FileOutputStream, File}
-import jena.{Jena, JenaTurtleWriter, JenaReaderFactory, JenaOperations}
-import org.w3.readwriteweb.play.Request
-import akka.actor.InvalidActorNameException
+import java.io.File
+import org.w3.banana.jena._
 import java.net.URL
 import scalaz.Scalaz._
 import scalaz.Validation
 import akka.event.Logging
+import com.hp.hpl.jena.sparql.core.DatasetGraphFactory
+import akka.actor.InvalidActorNameException
+import org.w3.banana.WrongExpectation
 
 
 trait ReadWriteWebException extends Exception
@@ -47,54 +48,77 @@ class ResourceManager(baseDirectory: File, baseUrl: URL) extends Actor {
 
 case class Request(method: String, path: String )
 case class Put[Rdf<:RDF](path: String, content: RwwContent)
+case class Query[Sparql<:SPARQL](query: QueryRwwContent[Sparql], path: String)
 
-abstract class ResourceActor[Rdf<:RDF](ops: RDFOperations[Rdf],
-                              file: File,
-                              path: String,
-                              url: URL) extends Actor {
+abstract
+class ResourceActor[Rdf <: RDF, Sparql <: SPARQL,+SyntaxType](
+            ops: RDFOperations[Rdf],
+            file: File,
+            path: String,
+            url: URL,
+            graphQuery: OpenGraphQuery[Rdf, Sparql]) extends Actor {
 
+  import ops._
+  val dsl = Diesel(ops)
+  import dsl._
+
+  val defaultGraph = URI("http://default.graph/")
   val log = Logging(context.system, this)
 
-  val ser = Turtle
-  var graph: Validation[BananaException, Rdf#Graph] = _
-  def reader[T<:RDFSerialization](ser: T): RDFReader[Rdf,_]
-  def writer(ser: RDFSerialization): BlockingWriter[Rdf]
+
+  def reader: RDFReader[Rdf, SyntaxType]
+
+  def writer: RDFBlockingWriter[Rdf, SyntaxType]
+
   lazy val parent = file.getParentFile
 
-  log.info("Resource actor for "+file.getAbsolutePath+" and url="+url)
+  log.info("Resource actor for " + file.getAbsolutePath + " and url=" + url)
 
+  protected def graph: Validation[BananaException, Rdf#Graph] =
+    reader.read(file, url.toString)
 
   protected def receive: Actor.Receive = {
-    case req @ Request("GET",path) => {
-      System.out.println("receive message "+req)
-      graph = reader(ser).read(file,url.toString)
+    case req@Request("GET", path) => {
       sender ! graph
     }
-    case pg @ Put(path,GraphRwwContent(model: Rdf#Graph)) => {
-      sender ! WrappedThrowable.fromTryCatch{
+    case pg@Put(path, GraphRwwContent(model: Rdf#Graph)) => {
+      val result =  WrappedThrowable.fromTryCatch {
         if (parent.isDirectory) true
         else parent.mkdirs()
-      }.flatMap {
+      } flatMap {
         case true => {
-          log.info("created dir "+parent + " now saving file")
-          writer(ser).write(model, file, url.toString)
+          log.info("created dir " + parent + " now saving file")
+          writer.write(model, file, url.toString)
         }
         case false => {
-          log.warning("could not create dir "+parent)
-          WrongExpectation("path="+path+" file="+file.getAbsolutePath).fail
+          log.warning("could not create dir " + parent)
+          WrongExpectation("path=" + path + " file=" + file.getAbsolutePath).fail
         }
+      }
+      sender ! result
+    }
+    case Query(QueryRwwContent(q: Sparql#Query), _) => {
+      sender ! graph.map {
+        graph =>
+          graphQuery.executeQuery(graph, q)
+
       }
     }
     case unknown => {
-      log.warning("received unknown message=>"+unknown)
-      sender ! WrongExpectation("could not parse message "+unknown).fail
+      log.warning("received unknown message=>" + unknown)
+      sender ! WrongExpectation("could not parse message " + unknown).fail
     }
   }
 }
 
-class JenaResourceActor(file: File, path: String, url: URL) extends ResourceActor[Jena](JenaOperations,file,path,url) {
+class JenaResourceActor(file: File, path: String, url: URL) extends ResourceActor[Jena, JenaSPARQL,Turtle](
+  JenaOperations, file,path,url,OpenJenaGraphQuery) {
 
-  def reader[T <: RDFSerialization](ser: T) = JenaReaderFactory.find(ser).getOrElse(sys.error("Cannot read serialisations with Sesame"))
+  def reader = JenaRDFReader.TurtleReader
 
-  def writer(ser: RDFSerialization) = JenaTurtleWriter
+  def writer = JenaRDFBlockingWriter.TurtleWriter
+
+  val store = JenaStore(DatasetGraphFactory.createMem())
+
+  protected lazy val sparqlEngine = OpenSPARQLEngine(JenaSPARQLOperations,store)
 }

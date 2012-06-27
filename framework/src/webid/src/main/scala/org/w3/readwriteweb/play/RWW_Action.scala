@@ -2,20 +2,17 @@ package org.w3.readwriteweb.play
 
 import play.api.mvc._
 import org.w3.banana._
-import org.w3.play.rdf.{JenaRDFParserMap, ParserMap}
 import java.net.URL
-import scala.Some
 import org.w3.banana.jena._
-import play.api.http.{ContentTypeOf, Writeable}
 import java.io.{File, ByteArrayOutputStream}
-import play.api.libs.concurrent.Akka
-import scala.Some
 import akka.actor.{Props, ActorSystem}
 import scala.Some
 import akka.util.Timeout
-import scalaz.Validation
-import play.api.libs.iteratee.Done
+import scalaz.{Either3, Validation}
+import play.api.libs.iteratee.{Enumerator, Done}
 import play.api.libs.iteratee.Input.Empty
+import org.w3.play.rdf.IterateeSelector
+import org.w3.play.rdf.jena.{JenaAsync, JenaSparqlQueryIteratee, JenaBlockingSparqlIteratee}
 
 
 /**
@@ -27,9 +24,39 @@ import play.api.libs.iteratee.Input.Empty
 //
 //}
 
+object Writer {
+
+  //return writer from request header
+  def writerFor[Obj](req: RequestHeader)
+               (implicit writerSelector: RDFWriterSelector[Obj])
+  :  Option[BlockingWriter[Obj, Any]] = {
+    //these two lines do more work than needed, optimise to get the first
+    val ranges = req.accept.map{ range => MediaRange(range) }
+    val writer = ranges.flatMap(range => writerSelector(range)).headOption
+    writer
+  }
+
+  def result[Obj](code: Int, writer: BlockingWriter[Obj,_])(obj: Obj) = {
+    SimpleResult(
+      header = ResponseHeader(200, Map("Content-Type" -> writer.mimeTypes.head.mime)),  //todo
+      body = toEnum(writer)(obj)
+    )
+  }
+
+  def toEnum[Obj](writer: BlockingWriter[Obj,_]) =
+    (obj: Obj) => {
+    val res = new ByteArrayOutputStream()
+    val tw = writer.write(obj, res, "http://localhost:8888/")
+    Enumerator(res.toByteArray)
+  }
+
+}
+
+
 object ReadWriteWeb_App extends Controller {
   import akka.pattern.ask
   import play.api.libs.concurrent._
+  import Writer._
 
   val system = ActorSystem("MySystem")
   implicit val timeout = Timeout(10 * 1000)
@@ -43,18 +70,19 @@ object ReadWriteWeb_App extends Controller {
   val url = new URL("https://localhost:8443/2012/")
   lazy val rwwActor = system.actorOf(Props(new ResourceManager(new File("test_www"), url)), name = "rwwActor")
 
-  def writerFor(req: RequestHeader) = req.accept.collectFirst {
-    case "application/rdf+xml" =>  (writeable(JenaRdfXmlWriter),ContentTypeOf[Jena#Graph](Some("application/rdf+xml")))
-    case "text/turtle" => (writeable(JenaTurtleWriter), ContentTypeOf[Jena#Graph](Some("text/turtle")))
-  }.get
+  //import some implicits
+  import JenaAsync.graphIterateeSelector
+  import JenaRDFBlockingWriter.{WriterSelector=>RDFWriterSelector}
+  import SparqlAnswerWriter.{WriterSelector=>SparqWriterSelector}
 
-  def writeable(writer: BlockingWriter[Jena]) =
-    Writeable[Jena#Graph] {
-      graph =>
-        val res = new ByteArrayOutputStream()
-        val tw = writer.write(graph, res, "http://localhost:8888/")
-        res.toByteArray
-    }
+
+//    JenaRDFBlockingWriter.WriterSelector()
+//    req.accept.collectFirst {
+//      case "application/rdf+xml" =>  (writeable(JenaRdfXmlWriter),ContentTypeOf[Jena#Graph](Some("application/rdf+xml")))
+//      case "text/turtle" => (writeable(JenaTurtleWriter), ContentTypeOf[Jena#Graph](Some("text/turtle")))
+//      case m @ SparqlAnswerJson.mime => (writeable(JenaSparqlJSONWriter), ContentTypeOf[JenaSPARQL#Solutions](Some(m)))
+//    }.get
+
 
 
   def get(path: String) = Action { request =>
@@ -63,7 +91,13 @@ object ReadWriteWeb_App extends Controller {
     yield {
          answer.fold(
           e => ExpectationFailed(e.getMessage),
-          g => { val (wr,ct) = writerFor(request); Ok(g)(wr,ct) }
+          g => {
+            writerFor[Jena#Graph](request)(RDFWriterSelector).map {
+              wr => result(200, wr)(g)
+            } getOrElse {
+              UnsupportedMediaType("could not find serialiserfor Accept types"+request.headers.get(play.api.http.HeaderNames.ACCEPT))
+            }
+          }
          )
     }
     Async {
@@ -94,69 +128,89 @@ object ReadWriteWeb_App extends Controller {
   def post = Action(jenaRwwBodyParser) {
     request =>
       import play.api.Play.current
-      Async {
-        Akka.future {
-        //this is a good piece of code for a future, as serialising the graph is very fast
-          System.out.println("triple num== " + request.body)
-          request.body match {
-            case GraphRwwContent(graph) => {
-              val (wr,ct) = writerFor(request)
-              Ok(graph.asInstanceOf[Jena#Graph])(wr,ct)
+      //this is a good piece of code for a future, as serialising the graph is very fast
+      System.out.println("triple num== " + request.body)
+      request.body match {
+        case GraphRwwContent(graph: Jena#Graph) => {
+          Async {
+            Akka.future {
+             writerFor[Jena#Graph](request)(RDFWriterSelector).map { wr=>
+                result(200,wr)(graph)
+             }.getOrElse(UnsupportedMediaType("cannot parse content type"))
             }
-            case _ => Ok("received content")
           }
-
         }
+        case q: QueryRwwContent[JenaSPARQL] => {
+          val future = for (answer <- rwwActor ask Query[JenaSPARQL](q,request.path) mapTo manifest[Validation[BananaException,Either3[JenaSPARQL#Solutions, Jena#Graph, Boolean]]])
+          yield {
+            answer.fold(
+              e => ExpectationFailed(e.getMessage),
+              answer => answer.fold(
+                sol => writerFor[JenaSPARQL#Solutions](request)(SparqWriterSelector).map {
+                  wr => result(200, wr)(sol)
+                },
+                graph => writerFor[Jena#Graph](request)(RDFWriterSelector).map {
+                  wr => result(200, wr)(graph)
+                },
+                bool => writerFor[Boolean](request).map {
+                  wr => result(200, wr)(bool)
+                }
+              ).getOrElse(UnsupportedMediaType("cannot parse content type"))
+            )
+          }
+          Async {
+            future.asPromise
+          }
+        }
+        case _ => Ok("received content")
       }
   }
 
 
 }
 
-object jenaRwwBodyParser extends RwwBodyParser[Jena, JenaSPARQL](JenaOperations, JenaSPARQLOperations, JenaRDFParserMap )
+object jenaRwwBodyParser extends
+   RwwBodyParser[Jena, JenaSPARQL](JenaOperations, JenaSPARQLOperations,
+     JenaAsync.graphIterateeSelector, JenaSparqlQueryIteratee.sparqlSelector )
 
 
-class RwwBodyParser[Rdf <: RDF, Sparql <: SPARQL](val ops: RDFOperations[Rdf],
-                                val sparqlOps: SPARQLOperations[Rdf, Sparql],
-                                val graphParsers: ParserMap[RDFSerialization, Rdf#Graph]) extends BodyParser[RwwContent] {
+class RwwBodyParser[Rdf <: RDF, Sparql <: SPARQL]
+(val ops: RDFOperations[Rdf],
+ val sparqlOps: SPARQLOperations[Rdf, Sparql],
+ val graphSelector: IterateeSelector[Rdf#Graph],
+ val sparqlSelector: IterateeSelector[Sparql#Query])
+  extends BodyParser[RwwContent] {
 
   import play.api.mvc.Results._
   import play.api.mvc.BodyParsers.parse
 
-  def apply(rh: RequestHeader) =
-    rh.contentType match {
-      case _ if rh.method == "GET" || rh.method == "HEAD" => Done(Right(emptyContent), Empty)
-      case Some("application/sparql-query") => parse.text(rh).map {
-        _.right.flatMap { sparql =>
-            sparqlOps.Query(sparql).fold(
-              fail => Left(BadRequest("could not parse the SPARQL sent: " + sparql)),
-              res =>  Right(QueryRwwContent(res))
-            )
+  def apply(rh: RequestHeader) =  {
+    if (rh.method == "GET" || rh.method == "HEAD") Done(Right(emptyContent), Empty)
+    else rh.contentType.map { str =>
+       MimeType(str) match {
+        case sparqlSelector(iteratee) => iteratee().mapDone {
+          case Left(e) => Left(BadRequest("could not parse query "+e))
+          case Right(sparql) => Right(QueryRwwContent(sparql))
+        }
+        case graphSelector(iteratee) => iteratee(Some(new URL("http://localhost:9000/" + rh.uri))).mapDone {
+          case Left(e) => Left(BadRequest("cought " + e))
+          case Right(graph) => Right(GraphRwwContent(graph))
+        }
+        case mime: MimeType => parse.raw(rh).mapDone {
+          _.right.map(rb => BinaryRwwContent(rb, mime.mime))
         }
       }
-      case Some(RdfLang(mime)) => graphParsers.iteratee4(mime)(Some(new URL("http://localhost:9000/" + rh.uri))).map {
-        case Left(e) => Left(BadRequest("cought " + e))
-        case Right(graph) => Right(GraphRwwContent(graph))
-      }
-      case Some(mime) => parse.raw(rh).map {
-        _.right.map(rb => BinaryRwwContent(rb, mime))
-      }
-      case None => Done(Left(BadRequest("missing Content-type header. Please set the content type in the HTTP header " +
-        " of your message ")), Empty)
+    }.getOrElse {
+      Done(Left(BadRequest("missing Content-type header. Please set the content type in the HTTP header of your message ")),
+        Empty)
     }
+  }
 
 
   override def toString = "BodyParser(" + ops.toString + ")"
 
 }
 
-
-object RdfLang {
-  def unapply(mime: String) = mime match {
-    case "application/rdf+xml" => Some(RDFXML)
-    case "text/turtle" => Some(Turtle)
-  }
-}
 
 trait RwwContent
 
