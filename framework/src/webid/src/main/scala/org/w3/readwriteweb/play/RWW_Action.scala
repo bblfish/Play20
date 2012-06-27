@@ -38,7 +38,7 @@ object Writer {
 
   def result[Obj](code: Int, writer: BlockingWriter[Obj,_])(obj: Obj) = {
     SimpleResult(
-      header = ResponseHeader(200, Map("Content-Type" -> writer.syntax.mimeTypes.head)),  //todo
+      header = ResponseHeader(200, Map("Content-Type" -> writer.syntax.mimeTypes.head.mime)),  //todo
       body = toEnum(writer)(obj)
     )
   }
