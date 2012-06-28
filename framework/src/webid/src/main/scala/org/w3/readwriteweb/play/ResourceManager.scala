@@ -11,6 +11,7 @@ import akka.event.Logging
 import com.hp.hpl.jena.sparql.core.DatasetGraphFactory
 import akka.actor.InvalidActorNameException
 import org.w3.banana.WrongExpectation
+import javax.persistence.QueryHint
 
 
 trait ReadWriteWebException extends Exception
@@ -43,6 +44,11 @@ class ResourceManager(baseDirectory: File, baseUrl: URL) extends Actor {
       resourceActorRef.forward(req)
     }
 
+    case req @ Query(_,path) =>  {
+      val resourceActorRef = getOrCreateResourceActor(path)
+      resourceActorRef.forward(req)
+    }
+
   }
 }
 
@@ -66,9 +72,9 @@ class ResourceActor[Rdf <: RDF, Sparql <: SPARQL,+SyntaxType](
   val log = Logging(context.system, this)
 
 
-  def reader: RDFReader[Rdf, SyntaxType]
+  def reader[S>: SyntaxType]: RDFReader[Rdf, S]
 
-  def writer: RDFBlockingWriter[Rdf, SyntaxType]
+  def writer[S>: SyntaxType]: RDFBlockingWriter[Rdf, S]
 
   lazy val parent = file.getParentFile
 
@@ -114,11 +120,12 @@ class ResourceActor[Rdf <: RDF, Sparql <: SPARQL,+SyntaxType](
 class JenaResourceActor(file: File, path: String, url: URL) extends ResourceActor[Jena, JenaSPARQL,Turtle](
   JenaOperations, file,path,url,OpenJenaGraphQuery) {
 
-  def reader = JenaRDFReader.TurtleReader
+  def reader[S >: Turtle] = JenaRDFReader.TurtleReader
 
-  def writer = JenaRDFBlockingWriter.TurtleWriter
+  def writer[S >: Turtle] = JenaRDFBlockingWriter.TurtleWriter
 
   val store = JenaStore(DatasetGraphFactory.createMem())
 
   protected lazy val sparqlEngine = OpenSPARQLEngine(JenaSPARQLOperations,store)
+
 }

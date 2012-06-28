@@ -15,7 +15,7 @@ object IterateeSelector {
   def apply[Result, T](implicit syntax: Syntax[T], reader: RDFIteratee[Result,T]): IterateeSelector[Result] =
     new IterateeSelector[Result] {
       def apply(mime: MimeType): Option[RDFIteratee[Result,Any]] =
-        if (syntax.mimeTypes contains mime)
+        if (syntax.mimeTypes.list contains mime)
           Some(reader)
         else
           None

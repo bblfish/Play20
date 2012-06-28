@@ -38,7 +38,7 @@ object Writer {
 
   def result[Obj](code: Int, writer: BlockingWriter[Obj,_])(obj: Obj) = {
     SimpleResult(
-      header = ResponseHeader(200, Map("Content-Type" -> writer.syntax.mimeTypes.head.mime)),  //todo
+      header = ResponseHeader(200, Map("Content-Type" -> writer.syntax.mime)),  //todo
       body = toEnum(writer)(obj)
     )
   }
@@ -73,7 +73,8 @@ object ReadWriteWeb_App extends Controller {
   //import some implicits
   import JenaAsync.graphIterateeSelector
   import JenaRDFBlockingWriter.{WriterSelector=>RDFWriterSelector}
-  import SparqlAnswerWriter.{WriterSelector=>SparqWriterSelector}
+  import SparqlSolutionsWriter.{WriterSelector=>SparqWriterSelector}
+  import org.w3.banana.BooleanWriter.{WriterSelector=>BoolWriterSelector}
 
 
 //    JenaRDFBlockingWriter.WriterSelector()
@@ -125,7 +126,7 @@ object ReadWriteWeb_App extends Controller {
       }
   }
 
-  def post = Action(jenaRwwBodyParser) {
+  def post(path: String) = Action(jenaRwwBodyParser) {
     request =>
       import play.api.Play.current
       //this is a good piece of code for a future, as serialising the graph is very fast
@@ -141,7 +142,7 @@ object ReadWriteWeb_App extends Controller {
           }
         }
         case q: QueryRwwContent[JenaSPARQL] => {
-          val future = for (answer <- rwwActor ask Query[JenaSPARQL](q,request.path) mapTo manifest[Validation[BananaException,Either3[JenaSPARQL#Solutions, Jena#Graph, Boolean]]])
+          val future = for (answer <- rwwActor ask Query[JenaSPARQL](q,path) mapTo manifest[Validation[BananaException,Either3[JenaSPARQL#Solutions, Jena#Graph, Boolean]]])
           yield {
             answer.fold(
               e => ExpectationFailed(e.getMessage),
@@ -152,7 +153,7 @@ object ReadWriteWeb_App extends Controller {
                 graph => writerFor[Jena#Graph](request)(RDFWriterSelector).map {
                   wr => result(200, wr)(graph)
                 },
-                bool => writerFor[Boolean](request).map {
+                bool => writerFor[Boolean](request)(BoolWriterSelector).map {
                   wr => result(200, wr)(bool)
                 }
               ).getOrElse(UnsupportedMediaType("cannot parse content type"))
