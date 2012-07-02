@@ -4,59 +4,16 @@ import play.api.mvc._
 import org.w3.banana._
 import java.net.URL
 import org.w3.banana.jena._
-import java.io.{File, ByteArrayOutputStream}
+import java.io.File
 import akka.actor.{Props, ActorSystem}
-import scala.Some
 import akka.util.Timeout
 import scalaz.{Either3, Validation}
-import play.api.libs.iteratee.{Enumerator, Done}
-import play.api.libs.iteratee.Input.Empty
-import org.w3.play.rdf.IterateeSelector
-import org.w3.play.rdf.jena.{JenaAsync, JenaSparqlQueryIteratee, JenaBlockingSparqlIteratee}
-
-
-/**
- * An action to enable
- */
-//class RWW_Action[Rdf <: RDF] extends Action[Rdf#Graph] {
-//
-//  def apply(request: Request[Rdf#Graph]) =
-//
-//}
-
-object Writer {
-
-  //return writer from request header
-  def writerFor[Obj](req: RequestHeader)
-               (implicit writerSelector: RDFWriterSelector[Obj])
-  :  Option[BlockingWriter[Obj, Any]] = {
-    //these two lines do more work than needed, optimise to get the first
-    val ranges = req.accept.map{ range => MediaRange(range) }
-    val writer = ranges.flatMap(range => writerSelector(range)).headOption
-    writer
-  }
-
-  def result[Obj](code: Int, writer: BlockingWriter[Obj,_])(obj: Obj) = {
-    SimpleResult(
-      header = ResponseHeader(200, Map("Content-Type" -> writer.syntax.mime)),  //todo
-      body = toEnum(writer)(obj)
-    )
-  }
-
-  def toEnum[Obj](writer: BlockingWriter[Obj,_]) =
-    (obj: Obj) => {
-    val res = new ByteArrayOutputStream()
-    val tw = writer.write(obj, res, "http://localhost:8888/")
-    Enumerator(res.toByteArray)
-  }
-
-}
 
 
 object ReadWriteWeb_App extends Controller {
   import akka.pattern.ask
   import play.api.libs.concurrent._
-  import Writer._
+  import PlayWriterBuilder._
 
   val system = ActorSystem("MySystem")
   implicit val timeout = Timeout(10 * 1000)
@@ -71,7 +28,6 @@ object ReadWriteWeb_App extends Controller {
   lazy val rwwActor = system.actorOf(Props(new ResourceManager(new File("test_www"), url)), name = "rwwActor")
 
   //import some implicits
-  import JenaAsync.graphIterateeSelector
   import JenaRDFBlockingWriter.{WriterSelector=>RDFWriterSelector}
   import SparqlSolutionsWriter.{WriterSelector=>SparqWriterSelector}
   import org.w3.banana.BooleanWriter.{WriterSelector=>BoolWriterSelector}
@@ -170,58 +126,6 @@ object ReadWriteWeb_App extends Controller {
 
 }
 
-object jenaRwwBodyParser extends
-   RwwBodyParser[Jena, JenaSPARQL](JenaOperations, JenaSPARQLOperations,
-     JenaAsync.graphIterateeSelector, JenaSparqlQueryIteratee.sparqlSelector )
-
-
-class RwwBodyParser[Rdf <: RDF, Sparql <: SPARQL]
-(val ops: RDFOperations[Rdf],
- val sparqlOps: SPARQLOperations[Rdf, Sparql],
- val graphSelector: IterateeSelector[Rdf#Graph],
- val sparqlSelector: IterateeSelector[Sparql#Query])
-  extends BodyParser[RwwContent] {
-
-  import play.api.mvc.Results._
-  import play.api.mvc.BodyParsers.parse
-
-  def apply(rh: RequestHeader) =  {
-    if (rh.method == "GET" || rh.method == "HEAD") Done(Right(emptyContent), Empty)
-    else rh.contentType.map { str =>
-       MimeType(str) match {
-        case sparqlSelector(iteratee) => iteratee().mapDone {
-          case Left(e) => Left(BadRequest("could not parse query "+e))
-          case Right(sparql) => Right(QueryRwwContent(sparql))
-        }
-        case graphSelector(iteratee) => iteratee(Some(new URL("http://localhost:9000/" + rh.uri))).mapDone {
-          case Left(e) => Left(BadRequest("cought " + e))
-          case Right(graph) => Right(GraphRwwContent(graph))
-        }
-        case mime: MimeType => parse.raw(rh).mapDone {
-          _.right.map(rb => BinaryRwwContent(rb, mime.mime))
-        }
-      }
-    }.getOrElse {
-      Done(Left(BadRequest("missing Content-type header. Please set the content type in the HTTP header of your message ")),
-        Empty)
-    }
-  }
-
-
-  override def toString = "BodyParser(" + ops.toString + ")"
-
-}
-
-
-trait RwwContent
-
-case object emptyContent extends RwwContent
-
-case class GraphRwwContent[Rdf<:RDF](graph: Rdf#Graph) extends RwwContent
-
-case class QueryRwwContent[Sparql<:SPARQL](query: Sparql#Query) extends RwwContent
-
-case class BinaryRwwContent(binary: RawBuffer, mime: String) extends RwwContent
 
 
 
