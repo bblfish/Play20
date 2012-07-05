@@ -1,13 +1,11 @@
 package play.api.mvc {
 
   import play.api._
-import libs.concurrent.Promise
-import play.api.libs.iteratee._
+  import libs.concurrent.Promise
   import play.api.libs.Crypto
 
   import scala.annotation._
   import java.security.cert.Certificate
-import play.core.utils.CaseInsensitive
 
 /**
    * The HTTP request header. Note that it doesn’t contain the request body yet.
