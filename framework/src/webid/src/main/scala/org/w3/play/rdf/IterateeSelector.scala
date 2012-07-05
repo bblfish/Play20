@@ -3,6 +3,10 @@ package org.w3.play.rdf
 import org.w3.banana.{Syntax, MimeType}
 
 
+/**
+ * function from mime types to RDFIteratees that return Result
+ * @tparam Result
+ */
 trait IterateeSelector[Result] extends (MimeType => Option[RDFIteratee[Result,Any]]) {
   def unapply(mime: MimeType) = apply(mime)
   def combineWith(other: IterateeSelector[Result]): IterateeSelector[Result] = IterateeSelector.combine(this, other)
