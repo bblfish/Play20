@@ -265,9 +265,7 @@ import play.api.libs.iteratee._
     /**
      * Transform the Headers to a Map
      */
-    def toMap: Map[String, Seq[String]] = keys.map { headerKey =>
-      (headerKey, getAll(headerKey))
-    }.toMap
+    def toMap: Map[String, Seq[String]]
 
     /**
      * Transform the Headers to a Map by ignoring multiple values.
