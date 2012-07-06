@@ -115,7 +115,7 @@ object PlayBuild extends Build {
       unmanagedJars in Compile += compilerJar,
       scalacOptions ++= Seq("-Xlint", "-deprecation", "-unchecked", "-encoding", "utf8"),
       javacOptions ++= Seq("-encoding", "utf8"),
-      resolvers ++= Seq(localRepository, aduna, typesafe)
+      resolvers ++= Seq(localRepository, aduna, typesafe, typesafeSnapshot)
     )
   ).settings(com.typesafe.sbtscalariform.ScalariformPlugin.defaultScalariformSettings: _*).
     dependsOn(PlayProject, PlayTestProject)
@@ -186,7 +186,7 @@ object PlayBuild extends Build {
           file(Path.userHome+"/.ivy2/local/"))(Resolver.ivyStylePatterns)
         val typesafe = "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
         val typesafeReleases = "Typesafe Releases Repository" at "http://repo.typesafe.com/typesafe/maven-releases/"
-        val typesafeSnapshot = "Typesafe Snapshots Repository" at "http://repo.typesafe.com/typesafe/maven-snapshots/"
+        val typesafeSnapshot = "Typesafe Snapshots Repository" at "http://repo.typesafe.com/typesafe/snapshots/"
         val bblfish = "BabelFish Repository" at "http://bblfish.net/work/repo/snapshots/"
         val sonatype = "Sonatype Release" at "https://oss.sonatype.org/content/repositories/snapshots/"
 
