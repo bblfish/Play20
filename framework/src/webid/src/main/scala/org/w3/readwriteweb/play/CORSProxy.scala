@@ -36,13 +36,14 @@ object CORSProxy extends Controller {
 
   import JenaRDFBlockingWriter.{WriterSelector=>RDFWriterSelector}
 
+  // turn a header map into an (att,val) sequence
+  private implicit def sequentialise(headers: Map[String,Seq[String]]) = headers.toSeq.flatMap(pair=>pair._2.map(v=>(pair._1,v)))
 
   def get(url: String) = Action {
     request =>
       System.out.println("in CORSProxy.get("+url+")")
       val iri = new URL(url)
       implicit val timeout = Timeout(10 * 1000)
-      System.out.println("headers="+request.headers)
       val futurePromiseResult = for (promise <- fetcher ask CORSFetch(iri, request.headers.toMap) mapTo manifest[Promise[Either[CORSException, CORSResponse[Jena]]]])
       yield {
         promise.map {
@@ -53,7 +54,14 @@ object CORSProxy extends Controller {
             //todo: this needs to be refined a lot, and thought through quite a lot more carefully
             val code = if (head.status == 200) 203
                        else head.status
-            result(code, wr)(graph).withHeaders(hdrs.toSeq.flatMap(pair=>pair._2.map(v=>(pair._1,v))): _*)
+
+            val corsHeaders = if (!hdrs.contains("Access-Control-Allow-Origin")) {
+               val origin = request.headers.get("Origin")
+               hdrs + ("Access-Control-Allow-Origin" -> Seq(origin.getOrElse("*")))
+            } else {
+              hdrs
+            }
+            result(code, wr)(graph).withHeaders(corsHeaders: _*)
           } getOrElse {
             UnsupportedMediaType("could not find serialiserfor Accept types"+request.headers.get(play.api.http.HeaderNames.ACCEPT))
           }
