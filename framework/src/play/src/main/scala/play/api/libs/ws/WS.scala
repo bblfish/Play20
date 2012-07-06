@@ -13,9 +13,12 @@ import com.ning.http.client.{
   HttpResponseBodyPart,
   HttpResponseHeaders,
   HttpResponseStatus,
-  Response => AHCResponse
+  Response => AHCResponse,
+  PerRequestConfig
 }
-import com.ning.http.client.AsyncHttpClientConfig
+import java.util.concurrent.Executor
+import collection.immutable.TreeMap
+import play.core.utils.CaseInsensitiveOrdered
 
 /**
  * Asynchronous API to to query web services, as an http client.
@@ -43,6 +46,7 @@ object WS {
       .setConnectionTimeoutInMs(current.configuration.getMilliseconds("ws.timeout").getOrElse(120000L).toInt)
       .setRequestTimeoutInMs(current.configuration.getMilliseconds("ws.timeout").getOrElse(120000L).toInt)
       .setFollowRedirects(current.configuration.getBoolean("ws.followRedirects").getOrElse(true))
+      .setUseProxyProperties(current.configuration.getBoolean("ws.useProxyProperties").getOrElse(true))
     current.configuration.getString("ws.useragent").map { useragent =>
       config.setUserAgent(useragent)
     }
@@ -54,7 +58,7 @@ object WS {
    *
    * @param url the URL to request
    */
-  def url(url: String): WSRequestHolder = WSRequestHolder(url, Map(), Map(), None, None)
+  def url(url: String): WSRequestHolder = WSRequestHolder(url, Map(), Map(), None, None, None, None)
 
   /**
    * A WS Request.
@@ -73,9 +77,9 @@ object WS {
     _auth.map(data => auth(data._1, data._2, data._3)).getOrElse({})
 
     /**
-     * Add http auth headers
+     * Add http auth headers. Defaults to HTTP Basic.
      */
-    private def auth(username: String, password: String, scheme: AuthScheme): WSRequest = {
+    private def auth(username: String, password: String, scheme: AuthScheme = AuthScheme.BASIC): WSRequest = {
       this.setRealm((new RealmBuilder())
         .setScheme(scheme)
         .setPrincipal(username)
@@ -109,9 +113,11 @@ object WS {
     private def ningHeadersToMap(headers: java.util.Map[String, java.util.Collection[String]]) =
       mapAsScalaMapConverter(headers).asScala.map(e => e._1 -> e._2.asScala.toSeq).toMap
 
-    private def ningHeadersToMap(headers: FluentCaseInsensitiveStringsMap) =
-      mapAsScalaMapConverter(headers).asScala.map(e => e._1 -> e._2.asScala.toSeq).toMap
-
+    private def ningHeadersToMap(headers: FluentCaseInsensitiveStringsMap) =  {
+      val res = mapAsScalaMapConverter(headers).asScala.map(e => e._1 -> e._2.asScala.toSeq).toMap
+      //todo: wrap the case insensitive ning map instead of creating a new one (unless perhaps immutabilty is important)
+      TreeMap(res.toSeq: _*)(CaseInsensitiveOrdered)
+    }
     private[libs] def execute: Promise[Response] = {
       import com.ning.http.client.AsyncCompletionHandler
       var result = Promise[Response]()
@@ -137,7 +143,7 @@ object WS {
     }
 
     /**
-     * Add an HTTP header (used for headers with mutiple values).
+     * Add an HTTP header (used for headers with multiple values).
      */
     override def addHeader(name: String, value: String) = {
       headers = headers + (name -> (headers.get(name).getOrElse(List()) :+ value))
@@ -174,8 +180,10 @@ object WS {
     /**
      * Defines the query string.
      */
-    def setQueryString(queryString: Map[String, String]) = {
-      queryString.foreach { param: (String, String) => this.addQueryParameter(param._1, param._2) }
+    def setQueryString(queryString: Map[String, Seq[String]]) = {
+      for ((key, values) <- queryString; value <- values) {
+        this.addQueryParameter(key, value)
+      }
       this
     }
 
@@ -258,9 +266,11 @@ object WS {
    */
   case class WSRequestHolder(url: String,
       headers: Map[String, Seq[String]],
-      queryString: Map[String, String],
+      queryString: Map[String, Seq[String]],
       calc: Option[SignatureCalculator],
-      auth: Option[Tuple3[String, String, AuthScheme]]) {
+      auth: Option[Tuple3[String, String, AuthScheme]],
+      followRedirects: Option[Boolean],
+      timeout: Option[Int]) {
 
     /**
      * sets the signature calculator for the request
@@ -291,7 +301,21 @@ object WS {
      * adds any number of query string parameters to the
      */
     def withQueryString(parameters: (String, String)*): WSRequestHolder =
-      this.copy(queryString = parameters.foldLeft(queryString)((m, param) => m + param))
+      this.copy(queryString = parameters.foldLeft(queryString) {
+        case (m, (k, v)) => m + (k -> (v +: m.get(k).getOrElse(Nil)))
+      })
+
+    /**
+     * Sets whether redirects (301, 302) should be followed automatically
+     */
+    def withFollowRedirects(follow: Boolean): WSRequestHolder =
+      this.copy(followRedirects = Some(follow))
+
+    /**
+     * Sets the request timeout in milliseconds
+     */
+    def withTimeout(timeout: Int): WSRequestHolder =
+      this.copy(timeout = Some(timeout))
 
     /**
      * performs a get with supplied body
@@ -343,16 +367,32 @@ object WS {
      */
     def options(): Promise[Response] = prepare("OPTIONS").execute
 
-    private def prepare(method: String) =
-      new WSRequest(method, auth, calc).setUrl(url)
+    private[play] def prepare(method: String) = {
+      val request = new WSRequest(method, auth, calc).setUrl(url)
         .setHeaders(headers)
         .setQueryString(queryString)
+      followRedirects.map(request.setFollowRedirects(_))
+      timeout.map { t: Int =>
+        val config = new PerRequestConfig()
+        config.setRequestTimeoutInMs(t)
+        request.setPerRequestConfig(config)
+      }
+      request
+    }
 
-    private def prepare[T](method: String, body: T)(implicit wrt: Writeable[T], ct: ContentTypeOf[T]) =
-      new WSRequest(method, auth, calc).setUrl(url)
+    private[play] def prepare[T](method: String, body: T)(implicit wrt: Writeable[T], ct: ContentTypeOf[T]) = {
+      val request = new WSRequest(method, auth, calc).setUrl(url)
         .setHeaders(Map("Content-Type" -> Seq(ct.mimeType.getOrElse("text/plain"))) ++ headers)
         .setQueryString(queryString)
         .setBody(wrt.transform(body))
+      followRedirects.map(request.setFollowRedirects(_))
+      timeout.map { t: Int =>
+        val config = new PerRequestConfig()
+        config.setRequestTimeoutInMs(t)
+        request.setPerRequestConfig(config)
+      }
+      request
+    }
 
   }
 }
@@ -373,7 +413,12 @@ case class Response(ahcResponse: AHCResponse) {
   /**
    * The response status code.
    */
-  def status: Int = ahcResponse.getStatusCode();
+  def status: Int = ahcResponse.getStatusCode()
+
+  /**
+   * The response status message.
+   */
+  def statusText: String = ahcResponse.getStatusText()
 
   /**
    * Get a response header.

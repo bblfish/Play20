@@ -4,6 +4,8 @@ import play.api.test._
 import play.api.test.Helpers._
 
 import org.specs2.mutable._
+import models._
+import play.api.mvc.AnyContentAsEmpty
 
 class ApplicationSpec extends Specification {
 
@@ -22,7 +24,7 @@ class ApplicationSpec extends Specification {
         contentAsString(result) must contain("Hello world")
       }
     }
-  
+
     "execute index again" in {
       
       running(FakeApplication()) {
@@ -45,7 +47,37 @@ class ApplicationSpec extends Specification {
 
       }
     }
-    
+
+    def javaResult(result: play.api.mvc.Result) =
+      new play.mvc.Result {
+        def getWrappedResult = result
+      }
+
+    "execute json with content type" in {
+     running(FakeApplication()) {
+       // here we just test the case insensitivity of FakeHeaders, which is not that
+       // interesting, ...
+         val Some(result) = routeAndCall(FakeRequest(GET, "/jsonWithContentType",
+           FakeHeaders(Map("Accept"-> Seq("application/json"))), AnyContentAsEmpty))
+         status(result) must equalTo(OK)
+         contentType(result) must equalTo(Some("application/json"))
+         charset(result) must equalTo(None)
+         contentAsString(result) must contain("""{"Accept":"application/json"}""")
+         play.test.Helpers.charset(javaResult(result)) must equalTo(null)
+       }
+     }
+
+
+    "execute json with content type and charset" in {
+     running(FakeApplication()) {
+         val Some(result) = routeAndCall(FakeRequest(GET, "/jsonWithCharset"))
+         status(result) must equalTo(OK)
+         contentType(result) must equalTo(Some("application/json"))
+         charset(result) must equalTo(Some("utf-8"))
+         play.test.Helpers.charset(javaResult(result)) must equalTo("utf-8")
+       }
+     }
+
     "not serve asset directories" in {
       running(FakeApplication()) {
         val Some(result) = routeAndCall(FakeRequest(GET, "/public//"))
@@ -97,7 +129,7 @@ class ApplicationSpec extends Specification {
           val Some(result) = routeAndCall(FakeRequest(GET, controllers.routes.Application.jsonp("baz").url))
           contentAsString(result) must equalTo ("baz({\"foo\":\"bar\"});")
           contentType(result) must equalTo (Some("text/javascript"))
-        }
+  }
       }
       "Java API" in {
         running(FakeApplication()) {
@@ -108,6 +140,6 @@ class ApplicationSpec extends Specification {
       }
     }
 
-  }
+}
 
 }
