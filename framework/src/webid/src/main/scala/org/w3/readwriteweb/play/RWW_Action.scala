@@ -97,13 +97,13 @@ object ReadWriteWeb_App extends Controller {
             }
           }
         }
-        case q: QueryRwwContent[JenaSPARQL] => {
-          val future = for (answer <- rwwActor ask Query[JenaSPARQL](q,path) mapTo manifest[Validation[BananaException,Either3[JenaSPARQL#Solutions, Jena#Graph, Boolean]]])
+        case q: QueryRwwContent[Jena] => {
+          val future = for (answer <- rwwActor ask Query[Jena](q,path) mapTo manifest[Validation[BananaException,Either3[Jena#Solutions, Jena#Graph, Boolean]]])
           yield {
             answer.fold(
               e => ExpectationFailed(e.getMessage),
               answer => answer.fold(
-                sol => writerFor[JenaSPARQL#Solutions](request)(SparqWriterSelector).map {
+                sol => writerFor[Jena#Solutions](request)(SparqWriterSelector).map {
                   wr => result(200, wr)(sol)
                 },
                 graph => writerFor[Jena#Graph](request)(RDFWriterSelector).map {

@@ -1,18 +1,14 @@
 package org.w3.readwriteweb.play
 
 import org.w3.banana._
-import jena.{JenaSPARQLOperations, JenaOperations, JenaSPARQL, Jena}
+import jena.{JenaSPARQLOperations, JenaOperations, Jena}
 import org.w3.play.rdf.IterateeSelector
 import play.api.mvc.{RawBuffer, RequestHeader, BodyParser}
 import play.api.libs.iteratee.Done
 import play.api.libs.iteratee.Input.Empty
 import scala.Left
-import org.w3.readwriteweb.play.QueryRwwContent
-import org.w3.readwriteweb.play.GraphRwwContent
-import org.w3.readwriteweb.play.BinaryRwwContent
 import scala.Right
 import scala.Some
-import org.w3.readwriteweb.play.Query
 import java.net.URL
 import org.w3.play.rdf.jena.{JenaSparqlQueryIteratee, JenaAsync}
 
@@ -26,13 +22,12 @@ import org.w3.play.rdf.jena.{JenaSparqlQueryIteratee, JenaAsync}
  * @param graphSelector
  * @param sparqlSelector
  * @tparam Rdf
- * @tparam Sparql
  */
-class RwwBodyParser[Rdf <: RDF, Sparql <: SPARQL]
+class RwwBodyParser[Rdf <: RDF]
 (val ops: RDFOperations[Rdf],
- val sparqlOps: SPARQLOperations[Rdf, Sparql],
+ val sparqlOps: SPARQLOperations[Rdf],
  val graphSelector: IterateeSelector[Rdf#Graph],
- val sparqlSelector: IterateeSelector[Sparql#Query])
+ val sparqlSelector: IterateeSelector[Rdf#Query])
   extends BodyParser[RwwContent] {
 
   import play.api.mvc.Results._
@@ -72,13 +67,13 @@ case object emptyContent extends RwwContent
 
 case class GraphRwwContent[Rdf<:RDF](graph: Rdf#Graph) extends RwwContent
 
-case class QueryRwwContent[Sparql<:SPARQL](query: Sparql#Query) extends RwwContent
+case class QueryRwwContent[Rdf<:RDF](query: Rdf#Query) extends RwwContent
 
 case class BinaryRwwContent(binary: RawBuffer, mime: String) extends RwwContent
 
 
 object jenaRwwBodyParser extends
-RwwBodyParser[Jena, JenaSPARQL](JenaOperations, JenaSPARQLOperations,
+RwwBodyParser[Jena](JenaOperations, JenaSPARQLOperations,
   JenaAsync.graphIterateeSelector, JenaSparqlQueryIteratee.sparqlSelector )
 
 

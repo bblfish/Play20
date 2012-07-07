@@ -1,6 +1,6 @@
 package org.w3.play.rdf
 
-import org.w3.banana.{SPARQLOperations, SPARQL, RDF}
+import org.w3.banana.{SPARQLOperations, RDF}
 import java.net.URL
 import play.api.libs.iteratee.Iteratee
 import java.io.{ByteArrayOutputStream, ByteArrayInputStream}
@@ -9,9 +9,9 @@ import java.io.{ByteArrayOutputStream, ByteArrayInputStream}
  * Iteratee for reading in SPARQL Queries
  * @author Henry Story
  */
-class SparqlQueryIteratee[Rdf<:RDF, Sparql<:SPARQL, +SyntaxType]
-(implicit ops: SPARQLOperations[Rdf,Sparql])
-  extends RDFIteratee[Sparql#Query, SyntaxType] {
+class SparqlQueryIteratee[Rdf<:RDF, +SyntaxType]
+(implicit ops: SPARQLOperations[Rdf])
+  extends RDFIteratee[Rdf#Query, SyntaxType] {
   /**
    *
    * @param loc the location of the document to evaluate relative URLs (this will not make a connection)
