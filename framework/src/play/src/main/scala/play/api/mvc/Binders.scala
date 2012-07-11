@@ -5,6 +5,7 @@ import scala.annotation._
 import play.api.mvc._
 
 import java.net.{ URLEncoder, URLDecoder }
+import java.util.UUID
 import scala.annotation._
 
 import scala.collection.JavaConverters._
@@ -202,42 +203,42 @@ object JavascriptLitteral {
   /**
    * Convert a Scala String to Javascript String
    */
-  implicit def litteralString = new JavascriptLitteral[String] {
+  implicit def litteralString: JavascriptLitteral[String] = new JavascriptLitteral[String] {
     def to(value: String) = "\"" + value + "\""
   }
 
   /**
    * Convert a Scala Int to Javascript number
    */
-  implicit def litteralInt = new JavascriptLitteral[Int] {
+  implicit def litteralInt: JavascriptLitteral[Int] = new JavascriptLitteral[Int] {
     def to(value: Int) = value.toString
   }
 
   /**
    * Convert a Java Integer to Javascript number
    */
-  implicit def litteralInteger = new JavascriptLitteral[java.lang.Integer] {
+  implicit def litteralJavaInteger: JavascriptLitteral[java.lang.Integer] = new JavascriptLitteral[java.lang.Integer] {
     def to(value: java.lang.Integer) = value.toString
   }
 
   /**
    * Convert a Scala Long to Javascript Long
    */
-  implicit def litteralLong = new JavascriptLitteral[Long] {
+  implicit def litteralLong: JavascriptLitteral[Long] = new JavascriptLitteral[Long] {
     def to(value: Long) = value.toString
   }
 
   /**
    * Convert a Scala Boolean to Javascript boolean
    */
-  implicit def litteralBoolean = new JavascriptLitteral[Boolean] {
+  implicit def litteralBoolean: JavascriptLitteral[Boolean] = new JavascriptLitteral[Boolean] {
     def to(value: Boolean) = value.toString
   }
 
   /**
    * Convert a Scala Option to Javascript literal (use null for None)
    */
-  implicit def litteralOption[T](implicit jsl: JavascriptLitteral[T]) = new JavascriptLitteral[Option[T]] {
+  implicit def litteralOption[T](implicit jsl: JavascriptLitteral[T]): JavascriptLitteral[Option[T]] = new JavascriptLitteral[Option[T]] {
     def to(value: Option[T]) = value.map(jsl.to(_)).getOrElse("null")
   }
 
@@ -279,7 +280,7 @@ object QueryStringBindable {
   /**
    * QueryString binder for Integer.
    */
-  implicit def bindableInteger: QueryStringBindable[java.lang.Integer] =
+  implicit def bindableJavaInteger: QueryStringBindable[java.lang.Integer] =
     bindableInt.transform(i => i, i => i)
 
   /**
@@ -342,6 +343,13 @@ object QueryStringBindable {
     bindableBoolean.transform(b => b, b => b)
 
   /**
+   * Path binder for java.util.UUID.
+   */
+  implicit object bindableUUID extends Parsing[UUID](
+    UUID.fromString(_), _.toString, (key: String, e: Exception) => "Cannot parse parameter %s as UUID: %s".format(key, e.getMessage)
+  )
+
+  /**
    * QueryString binder for Option.
    */
   implicit def bindableOption[T: QueryStringBindable] = new QueryStringBindable[Option[T]] {
@@ -358,7 +366,7 @@ object QueryStringBindable {
   /**
    * QueryString binder for Java Option.
    */
-  implicit def bindableJavaOption[T: QueryStringBindable] = new QueryStringBindable[play.libs.F.Option[T]] {
+  implicit def bindableJavaOption[T: QueryStringBindable]: QueryStringBindable[play.libs.F.Option[T]] = new QueryStringBindable[play.libs.F.Option[T]] {
     def bind(key: String, params: Map[String, Seq[String]]) = {
       Some(
         implicitly[QueryStringBindable[T]].bind(key, params)
@@ -380,7 +388,7 @@ object QueryStringBindable {
   /**
    * QueryString binder for List
    */
-  implicit def bindableList[T: QueryStringBindable] = new QueryStringBindable[List[T]] {
+  implicit def bindableList[T: QueryStringBindable]: QueryStringBindable[List[T]] = new QueryStringBindable[List[T]] {
     def bind(key: String, params: Map[String, Seq[String]]) = Some(Right(bindList[T](key, params)))
     def unbind(key: String, values: List[T]) = unbindList(key, values)
     override def javascriptUnbind = javascriptUnbindList(implicitly[QueryStringBindable[T]].javascriptUnbind)
@@ -389,7 +397,7 @@ object QueryStringBindable {
   /**
    * QueryString binder for java.util.List
    */
-  implicit def bindableJavaList[T: QueryStringBindable] = new QueryStringBindable[java.util.List[T]] {
+  implicit def bindableJavaList[T: QueryStringBindable]: QueryStringBindable[java.util.List[T]] = new QueryStringBindable[java.util.List[T]] {
     def bind(key: String, params: Map[String, Seq[String]]) = Some(Right(bindList[T](key, params).asJava))
     def unbind(key: String, values: java.util.List[T]) = unbindList(key, values.asScala)
     override def javascriptUnbind = javascriptUnbindList(implicitly[QueryStringBindable[T]].javascriptUnbind)
@@ -456,7 +464,7 @@ object PathBindable {
   /**
    * Path binder for String.
    */
-  implicit def bindableString = new PathBindable[String] {
+  implicit def bindableString: PathBindable[String] = new PathBindable[String] {
     def bind(key: String, value: String) = Right(URLDecoder.decode(value, "utf-8"))
     def unbind(key: String, value: String) = value
   }
@@ -531,6 +539,13 @@ object PathBindable {
    */
   implicit def bindableJavaBoolean: PathBindable[java.lang.Boolean] = 
     bindableBoolean.transform(b => b, b => b)
+
+  /**
+   * Path binder for java.util.UUID.
+   */
+  implicit object bindableUUID extends Parsing[UUID](
+    UUID.fromString(_), _.toString, (key: String, e: Exception) => "Cannot parse parameter %s as UUID: %s".format(key, e.getMessage)
+  )
 
   /**
    * Path binder for Java PathBindable

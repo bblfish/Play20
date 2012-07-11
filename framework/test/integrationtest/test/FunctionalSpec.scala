@@ -43,7 +43,8 @@ class FunctionalSpec extends Specification {
       running(TestServer(9001), HTMLUNIT) { browser =>
         // -- Etags
 
-        val format = new java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz")
+        val format = new java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss zzz", Locale.ENGLISH)
+        format.setTimeZone(java.util.TimeZone.getTimeZone("UTC"))
         val h = await(WS.url("http://localhost:9001/public/stylesheets/main.css").get)
         h.header("Last-Modified").isDefined must equalTo(true)
         h.header("LAST-MODIFIED").isDefined must equalTo(true)   //test case insensitivity of hashmap keys
@@ -80,6 +81,10 @@ class FunctionalSpec extends Specification {
         val third = await(WS.url("http://localhost:9001/public/stylesheets/main.css").withHeaders("If-Modified-Since"-> format.format(earlierDate)).get)
         third.header("Last-Modified").isDefined must equalTo(true)
         third.status must equalTo(200)
+
+        val fourth = await(WS.url("http://localhost:9001/public/stylesheets/main.css").withHeaders("If-Modified-Since" -> "Not a date").get)
+        fourth.header("Last-Modified").isDefined must equalTo(true)
+        fourth.status must equalTo(200)
 
         val content: String = await(WS.url("http://localhost:9001/post").post("param1=foo")).body
         content must contain ("param1")

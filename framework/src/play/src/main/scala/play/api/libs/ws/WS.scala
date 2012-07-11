@@ -141,7 +141,7 @@ object WS {
     }
 
     /**
-     * Add an HTTP header (used for headers with mutiple values).
+     * Add an HTTP header (used for headers with multiple values).
      */
     override def addHeader(name: String, value: String) = {
       headers = headers + (name -> (headers.get(name).getOrElse(List()) :+ value))

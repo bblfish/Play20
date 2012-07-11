@@ -1,5 +1,7 @@
 import sbt._
 import Keys._
+import com.typesafe.tools.mima.plugin.MimaPlugin.mimaDefaultSettings
+import com.typesafe.tools.mima.plugin.MimaKeys.previousArtifact
 
 object PlayBuild extends Build {
   
@@ -13,7 +15,8 @@ object PlayBuild extends Build {
     lazy val TemplatesProject = Project(
         "Templates",
         file("src/templates"),
-        settings = buildSettings ++ Seq(
+        settings = buildSettingsWithMIMA ++ Seq(
+            previousArtifact := Some("play" % {"templates_"+previousScalaVersion} % previousVersion),
             libraryDependencies := templatesDependencies,
             publishTo := Some(playRepository),
             publishArtifact in (Compile, packageDoc) := false,
@@ -27,7 +30,8 @@ object PlayBuild extends Build {
     lazy val AnormProject = Project(
         "Anorm",
         file("src/anorm"),
-        settings = buildSettings ++ Seq(
+        settings = buildSettingsWithMIMA ++ Seq(
+            previousArtifact := Some("play" % {"anorm_"+previousScalaVersion} % previousVersion),
             libraryDependencies := anormDependencies,
             publishTo := Some(playRepository),
             scalacOptions ++= Seq("-encoding", "UTF-8", "-Xlint","-deprecation", "-unchecked"),
@@ -39,7 +43,8 @@ object PlayBuild extends Build {
     lazy val PlayProject = Project(
         "Play",
         file("src/play"),
-        settings = buildSettings ++ Seq(
+        settings = buildSettingsWithMIMA ++ Seq(
+            previousArtifact := Some("play" % {"play_"+previousScalaVersion} % previousVersion),
             libraryDependencies := runtime,
             sourceGenerators in Compile <+= sourceManaged in Compile map PlayVersion,
             publishTo := Some(playRepository),
@@ -56,7 +61,8 @@ object PlayBuild extends Build {
     lazy val PlayTestProject = Project(
       "Play-Test",
       file("src/play-test"),
-      settings = buildSettings ++ Seq(
+      settings = buildSettingsWithMIMA ++ Seq(
+        previousArtifact := Some("play" % {"play-test_"+previousScalaVersion} % previousVersion),
         libraryDependencies := testDependencies,
         publishTo := Some(playRepository),
         scalacOptions ++= Seq("-encoding", "UTF-8", "-Xlint","-deprecation", "-unchecked"),
@@ -149,6 +155,8 @@ object PlayBuild extends Build {
         val buildScalaVersion = Option(System.getProperty("scala.version")).getOrElse("2.9.1")
         val buildScalaVersionForSbt = "2.9.1"
         val buildSbtVersion   = "0.11.3"
+        val previousVersion   = "2.0.2"
+        val previousScalaVersion = "2.9.1"
 
         val buildSettings = Defaults.defaultSettings ++ Seq (
             organization   := buildOrganization,
@@ -157,7 +165,7 @@ object PlayBuild extends Build {
             logManager <<= extraLoggers(PlayLogManager.default),
             ivyLoggingLevel := UpdateLogging.DownloadOnly
         )
-
+        val buildSettingsWithMIMA = buildSettings ++ mimaDefaultSettings
     }
 
     object LocalSBT {
@@ -200,7 +208,7 @@ object PlayBuild extends Build {
     object Dependencies {
 
         val runtime = Seq(
-            "io.netty"                          %    "netty"                    %   "3.3.0.Final",
+            "io.netty"                          %    "netty"                    %   "3.5.0.Final",
             "org.slf4j"                         %    "slf4j-api"                %   "1.6.4",
             "org.slf4j"                         %    "jul-to-slf4j"             %   "1.6.4",
             "org.slf4j"                         %    "jcl-over-slf4j"           %   "1.6.4",
@@ -293,7 +301,7 @@ object PlayBuild extends Build {
             "com.typesafe.config"               %    "config"                   %   "0.2.1",
             "rhino"                             %    "js"                       %   "1.7R2",
             
-            ("com.google.javascript"            %    "closure-compiler"         %   "r1918" notTransitive())
+            ("com.google.javascript"            %    "closure-compiler"         %   "r2079" notTransitive())
               .exclude("args4j", "args4j")
               .exclude("com.google.guava", "guava")
               .exclude("org.json", "json")
