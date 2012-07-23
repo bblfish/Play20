@@ -14,7 +14,7 @@ public class TestServer extends play.api.test.TestServer {
      * @param application The FakeApplication to load in this server.
      */
     public TestServer(int port, FakeApplication application) {
-        super(port, application.getWrappedApplication());
+        super(port, application.getWrappedApplication(), false);
     }
     
 }

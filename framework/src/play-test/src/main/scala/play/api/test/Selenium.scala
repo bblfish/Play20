@@ -11,6 +11,7 @@ import org.openqa.selenium.htmlunit._
 import org.fluentlenium.core._
 
 import collection.JavaConverters._
+import play.core.server.Ports
 
 /**
  * A test browser (Using Selenium WebDriver) with the FluentLenium API (https://github.com/Fluentlenium/FluentLenium).
@@ -94,7 +95,7 @@ object WebDriverFactory {
  * @param port HTTP port to bind on.
  * @param application The FakeApplication to load in this server.
  */
-case class TestServer(port: Int, application: FakeApplication = FakeApplication()) {
+case class TestServer(port: Int, application: FakeApplication = FakeApplication(), secure:Boolean = false) {
 
   private var server: play.core.server.NettyServer = _
 
@@ -106,7 +107,11 @@ case class TestServer(port: Int, application: FakeApplication = FakeApplication(
       sys.error("Server already started!")
     }
     play.core.Invoker.uninit()
-    server = new play.core.server.NettyServer(new play.core.TestApplication(application), port, mode = Mode.Test)
+
+    server = secure match {
+      case true => new play.core.server.NettyServer(new play.core.TestApplication(application), Ports(None, Option(port)), mode = Mode.Test)
+      case _    => new play.core.server.NettyServer(new play.core.TestApplication(application), Ports(Option(port), None), mode = Mode.Test)
+    }
   }
 
   /**

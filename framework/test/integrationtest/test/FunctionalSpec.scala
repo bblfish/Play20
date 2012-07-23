@@ -27,7 +27,16 @@ class FunctionalSpec extends Specification {
         browser.goTo("http://localhost:9002")
         browser.pageSource must contain("Hello world")
       }
-    } 
+    }
+
+
+    "be able to use SSL" in {
+      running(TestServer(9003, secure = true), HTMLUNIT) { browser =>
+        browser.goTo("https://localhost:9003")
+        browser.pageSource must contain("Hello world")
+      }
+    }
+
     "pass functional test" in {
       running(TestServer(9001), HTMLUNIT) { browser =>
         // -- Etags
@@ -160,6 +169,7 @@ class FunctionalSpec extends Specification {
       }
     }
 
-        }
 
   }
+
+}
