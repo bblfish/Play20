@@ -26,10 +26,14 @@ trait ServerWithStop {
   def stop(): Unit
 }
 
+case class Ports(port: Option[Int], sslPort: Option[Int]) {
+  assert(port.isDefined || sslPort.isDefined, "You must define at least a port.")
+}
+
 /**
  * creates a Server implementation based Netty
  */
-class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[Int] = None, address: String = "0.0.0.0", val mode: Mode.Mode = Mode.Prod) extends Server with ServerWithStop {
+class NettyServer(appProvider: ApplicationProvider, ports: Ports, address: String = "0.0.0.0", val mode: Mode.Mode = Mode.Prod) extends Server with ServerWithStop {
 
   def applicationProvider = appProvider
 
@@ -56,7 +60,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[I
     }
 
     lazy val sslContext: Option[SSLContext] =  //the sslContext should be reused on each connection
-      for (tlsPort <- sslPort;
+      for (tlsPort <- ports.sslPort;
            app <- appProvider.get.right.toOption )
       yield {
         val config = app.configuration
@@ -82,7 +86,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[I
           } else None
         }
         val kmf = kmfOpt.flatMap(a => a).orElse {
-          Logger("play").warn("using localhost fake keystore for ssl connection on port " + sslPort.get)
+          Logger("play").warn("using localhost fake keystore for ssl connection on port " + ports.sslPort.get)
           keyStore.load(FakeKeyStore.asInputStream, FakeKeyStore.getKeyStorePassword)
           val kmf = KeyManagerFactory.getInstance("SunX509")
           kmf.init(keyStore, FakeKeyStore.getCertificatePassword)
@@ -92,7 +96,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[I
         val sslContext = SSLContext.getInstance("TLS")
         val tm = config.getString(ksAttr + ".trust").map {
           case "noCA" => {
-            Logger("play").warn("secure http server (https) on port " + sslPort.get + " with no client " +
+            Logger("play").warn("secure http server (https) on port " + ports.sslPort.get + " with no client " +
               "side CA verification. Requires http://webid.info/ for client certifiate verification.")
             Array[TrustManager](noCATrustManager)
           }
@@ -117,7 +121,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[I
   val defaultUpStreamHandler = new PlayDefaultUpstreamHandler(this, allChannels)
 
   // The HTTP server channel
-  val HTTP: Bootstrap = {
+  val HTTP: Option[Bootstrap] = ports.port.map { port =>
     val bootstrap = newBootstrap
     bootstrap.setPipelineFactory(new PlayPipelineFactory)
     allChannels.add(bootstrap.bind(new java.net.InetSocketAddress(address, port)))
@@ -125,19 +129,19 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[I
   }
 
   // Maybe the HTTPS server channel
-  val HTTPS: Option[Bootstrap] = sslPort.map { port =>
+  val HTTPS: Option[Bootstrap] = ports.sslPort.map { sslPort =>
     val bootstrap = newBootstrap
     bootstrap.setPipelineFactory(new PlayPipelineFactory(secure = true))
-    allChannels.add(bootstrap.bind(new java.net.InetSocketAddress(address, port)))
+    allChannels.add(bootstrap.bind(new java.net.InetSocketAddress(address, sslPort)))
     bootstrap
   }
 
   mode match {
     case Mode.Test =>
     case _ => {
-      Logger("play").info("Listening for HTTP on port %s...".format(port))
-      sslPort.foreach { port =>
-        Logger("play").info("Listening for HTTPS on port %s...".format(port))
+      ports.port.foreach {port => Logger("play").info("Listening for HTTP on port %s...".format(port)) }
+      ports.sslPort.foreach { sslPort =>
+        Logger("play").info("Listening for HTTPS on port %s...".format(sslPort))
       }
     }
   }
@@ -165,7 +169,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[I
     allChannels.close().awaitUninterruptibly()
 
     // Release the HTTP server
-    HTTP.releaseExternalResources()
+    HTTP.foreach(_.releaseExternalResources())
 
     // Release the HTTPS server if needed
     HTTPS.foreach(_.releaseExternalResources())
@@ -220,8 +224,8 @@ object NettyServer {
       val config = app.application.configuration
       val server = new NettyServer(
         app,
-        config.getInt("http.port").getOrElse(9000),
-        config.getInt("https.port"),
+        Ports(Option(config.getInt("http.port").getOrElse(9000)),
+        config.getInt("https.port")),
         config.getString("http.address").getOrElse("0.0.0.0"))
         
       Runtime.getRuntime.addShutdownHook(new Thread {
@@ -262,8 +266,8 @@ object NettyServer {
     play.utils.Threads.withContextClassLoader(this.getClass.getClassLoader) {
       try {
         val appProvider = new ReloadableApplication(sbtLink)
-        new NettyServer(appProvider, port,
-          Option(System.getProperty("https.port")).map(Integer.parseInt(_)),
+        new NettyServer(appProvider, Ports(Some(port),
+          Option(System.getProperty("https.port")).map(Integer.parseInt(_))),
           mode = Mode.Dev)
       } catch {
         case e => {
