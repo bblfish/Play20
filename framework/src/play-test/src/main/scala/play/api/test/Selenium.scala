@@ -94,7 +94,7 @@ object WebDriverFactory {
  * @param port HTTP port to bind on.
  * @param application The FakeApplication to load in this server.
  */
-case class TestServer(port: Int, application: FakeApplication = FakeApplication()) {
+case class TestServer(port: Int, application: FakeApplication = FakeApplication(), secure: Boolean = false) {
 
   private var server: play.core.server.NettyServer = _
 
@@ -106,7 +106,10 @@ case class TestServer(port: Int, application: FakeApplication = FakeApplication(
       sys.error("Server already started!")
     }
     play.core.Invoker.uninit()
-    server = new play.core.server.NettyServer(new play.core.TestApplication(application), Some(port), mode = Mode.Test)
+    server = secure match {
+          case true  => new play.core.server.NettyServer(new play.core.TestApplication(application), None, Some(port), mode = Mode.Test)
+          case false => new play.core.server.NettyServer(new play.core.TestApplication(application), Some(port), None, mode = Mode.Test)
+        }
   }
 
   /**
