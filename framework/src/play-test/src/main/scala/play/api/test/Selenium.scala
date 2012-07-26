@@ -106,7 +106,7 @@ case class TestServer(port: Int, application: FakeApplication = FakeApplication(
       sys.error("Server already started!")
     }
     play.core.Invoker.uninit()
-    server = new play.core.server.NettyServer(new play.core.TestApplication(application), port, mode = Mode.Test)
+    server = new play.core.server.NettyServer(new play.core.TestApplication(application), Some(port), mode = Mode.Test)
   }
 
   /**

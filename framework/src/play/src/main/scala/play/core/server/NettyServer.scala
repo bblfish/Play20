@@ -29,7 +29,7 @@ trait ServerWithStop {
 /**
  * creates a Server implementation based Netty
  */
-class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[Int] = None, address: String = "0.0.0.0", val mode: Mode.Mode = Mode.Prod) extends Server with ServerWithStop {
+class NettyServer(appProvider: ApplicationProvider, port: Option[Int], sslPort: Option[Int] = None, address: String = "0.0.0.0", val mode: Mode.Mode = Mode.Prod) extends Server with ServerWithStop {
 
   def applicationProvider = appProvider
 
@@ -117,15 +117,15 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[I
   val defaultUpStreamHandler = new PlayDefaultUpstreamHandler(this, allChannels)
 
   // The HTTP server channel
-  val HTTP: Bootstrap = {
+  private val HTTP: Option[Bootstrap] = port.map { p=>
     val bootstrap = newBootstrap
     bootstrap.setPipelineFactory(new PlayPipelineFactory)
-    allChannels.add(bootstrap.bind(new java.net.InetSocketAddress(address, port)))
+    allChannels.add(bootstrap.bind(new java.net.InetSocketAddress(address, p)))
     bootstrap
   }
 
   // Maybe the HTTPS server channel
-  val HTTPS: Option[Bootstrap] = sslPort.map { port =>
+  private val HTTPS: Option[Bootstrap] = sslPort.map { port =>
     val bootstrap = newBootstrap
     bootstrap.setPipelineFactory(new PlayPipelineFactory(secure = true))
     allChannels.add(bootstrap.bind(new java.net.InetSocketAddress(address, port)))
@@ -165,7 +165,7 @@ class NettyServer(appProvider: ApplicationProvider, port: Int, sslPort: Option[I
     allChannels.close().awaitUninterruptibly()
 
     // Release the HTTP server
-    HTTP.releaseExternalResources()
+    HTTP.foreach(_.releaseExternalResources())
 
     // Release the HTTPS server if needed
     HTTPS.foreach(_.releaseExternalResources())
@@ -218,10 +218,15 @@ object NettyServer {
     try {
       val app = new StaticApplication(applicationPath)
       val config = app.application.configuration
+      val httpsPort = config.getInt("https.port")
+      val httpPort = config.getInt("http.port").orElse{
+        if (httpsPort.isDefined) None
+        else Some(9000) // start the default http server if both previous ports were missed
+      }
       val server = new NettyServer(
         app,
-        config.getInt("http.port").getOrElse(9000),
-        config.getInt("https.port"),
+        httpPort,
+        httpsPort,
         config.getString("http.address").getOrElse("0.0.0.0"))
         
       Runtime.getRuntime.addShutdownHook(new Thread {
@@ -262,7 +267,7 @@ object NettyServer {
     play.utils.Threads.withContextClassLoader(this.getClass.getClassLoader) {
       try {
         val appProvider = new ReloadableApplication(sbtLink)
-        new NettyServer(appProvider, port,
+        new NettyServer(appProvider, if (port > 0) Some(port) else None,
           Option(System.getProperty("https.port")).map(Integer.parseInt(_)),
           mode = Mode.Dev)
       } catch {
