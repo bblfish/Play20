@@ -135,8 +135,10 @@ class NettyServer(appProvider: ApplicationProvider, port: Option[Int], sslPort: 
   mode match {
     case Mode.Test =>
     case _ => {
-      Logger("play").info("Listening for HTTP on port %s...".format(port))
-      sslPort.foreach { port =>
+      for (p <- port) {
+        Logger("play").info("Listening for HTTP on port %s...".format(p))
+      }
+      for (port <- sslPort) {
         Logger("play").info("Listening for HTTPS on port %s...".format(port))
       }
     }
