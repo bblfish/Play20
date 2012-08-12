@@ -17,6 +17,7 @@ import com.ning.http.client.{
 }
 import collection.immutable.TreeMap
 import play.core.utils.CaseInsensitiveOrdered
+import play.api.Configuration
 
 /**
  * Asynchronous API to to query web services, as an http client.
@@ -40,12 +41,16 @@ object WS {
    */
   lazy val client = {
     import play.api.Play.current
+    val conf = current.configuration
     val config = new AsyncHttpClientConfig.Builder()
-      .setConnectionTimeoutInMs(current.configuration.getMilliseconds("ws.timeout").getOrElse(120000L).toInt)
-      .setRequestTimeoutInMs(current.configuration.getMilliseconds("ws.timeout").getOrElse(120000L).toInt)
-      .setFollowRedirects(current.configuration.getBoolean("ws.followRedirects").getOrElse(true))
-      .setUseProxyProperties(current.configuration.getBoolean("ws.useProxyProperties").getOrElse(true))
-    current.configuration.getString("ws.useragent").map { useragent =>
+      .setConnectionTimeoutInMs(conf.getMilliseconds("ws.timeout").getOrElse(120000L).toInt)
+      .setRequestTimeoutInMs(conf.getMilliseconds("ws.timeout").getOrElse(120000L).toInt)
+      .setFollowRedirects(conf.getBoolean("ws.followRedirects").getOrElse(true))
+      .setMaximumConnectionsPerHost(conf.getInt("ws.maxConnectionsPerHost").getOrElse(15))
+      .setMaximumConnectionsTotal(conf.getInt("ws.maxConnectionsTotal").getOrElse(10000))
+      .setMaximumNumberOfRedirects(conf.getInt("ws.maxDefaultRedirects").getOrElse(7))
+      .setUseProxyProperties(conf.getBoolean("ws.useProxyProperties").getOrElse(true))
+    conf.getString("ws.useragent").map { useragent =>
       config.setUserAgent(useragent)
     }
     new AsyncHttpClient(config.build())
