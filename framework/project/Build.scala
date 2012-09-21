@@ -131,8 +131,8 @@ object PlayBuild extends Build {
 
         val buildOrganization = "play"
         val buildVersion      = Option(System.getProperty("play.version")).filterNot(_.isEmpty).getOrElse("2.0-unknown")
-        val buildScalaVersion = Option(System.getProperty("scala.version")).getOrElse("2.9.2")
-        val buildScalaVersionForSbt = "2.9.2"
+        val buildScalaVersion = Option(System.getProperty("scala.version")).getOrElse("2.9.1")
+        val buildScalaVersionForSbt = "2.9.1"
         val buildSbtVersion   = "0.11.3"
 
         val buildSettings = Defaults.defaultSettings ++ Seq (
@@ -171,19 +171,19 @@ object PlayBuild extends Build {
         
         val typesafe = "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
         
-        val typesafeReleases = "Typesafe Releases Repository" at "http://repo.typesafe.com/typesafe/maven-releases/"
-        val typesafeSnapshot = "Typesafe Snapshots Repository" at "http://repo.typesafe.com/typesafe/maven-snapshots/"
+        val typesafeReleases = "Typesafe Releases Repository" at "http://typesafe.artifactoryonline.com/typesafe/maven-releases/"
+        val typesafeSnapshot = "Typesafe Snapshots Repository" at "http://typesafe.artifactoryonline.com/typesafe/maven-snapshots/"
         val playRepository = if (buildVersion.endsWith("SNAPSHOT")) typesafeSnapshot else typesafeReleases
         
-        val typesafeIvyReleases = Resolver.url("Typesafe Ivy Releases Repository", url("http://repo.typesafe.com/typesafe/ivy-releases/"))(Resolver.ivyStylePatterns) 
-        val typesafeIvySnapshot = Resolver.url("Typesafe Ivy Snapshots Repository", url("http://repo.typesafe.com/typesafe/ivy-snapshots/"))(Resolver.ivyStylePatterns) 
+        val typesafeIvyReleases = Resolver.url("Typesafe Ivy Releases Repository", url("http://typesafe.artifactoryonline.com/typesafe/ivy-releases/"))(Resolver.ivyStylePatterns) 
+        val typesafeIvySnapshot = Resolver.url("Typesafe Ivy Snapshots Repository", url("http://typesafe.artifactoryonline.com/typesafe/ivy-snapshots/"))(Resolver.ivyStylePatterns) 
         val playIvyRepository = if (buildVersion.endsWith("SNAPSHOT")) typesafeIvySnapshot else typesafeIvyReleases
     }
 
     object Dependencies {
 
         val runtime = Seq(
-            "io.netty"                          %    "netty"                    %   "3.5.3.Final",
+            "io.netty"                          %    "netty"                    %   "3.5.0.Final",
             "org.slf4j"                         %    "slf4j-api"                %   "1.6.4",
             "org.slf4j"                         %    "jul-to-slf4j"             %   "1.6.4",
             "org.slf4j"                         %    "jcl-over-slf4j"           %   "1.6.4",
@@ -225,13 +225,13 @@ object PlayBuild extends Build {
             ("org.springframework"              %    "spring-beans"             %   "3.0.7.RELEASE" notTransitive())
               .exclude("org.springframework", "spring-core")
             ,
-            
+
             "joda-time"                         %    "joda-time"                %   "2.0",
             "org.joda"                          %    "joda-convert"             %   "1.1",
             "javassist"                         %    "javassist"                %   "3.12.1.GA",
             "commons-lang"                      %    "commons-lang"             %   "2.6",
             
-            ("com.ning"                         %    "async-http-client"        %   "1.7.0" notTransitive())
+            ("com.ning"                         %    "async-http-client"        %   "1.7.6" notTransitive())
               .exclude("org.jboss.netty", "netty")
             ,
             
@@ -260,6 +260,7 @@ object PlayBuild extends Build {
             "net.sf.ehcache"                    %    "ehcache-core"             %   "2.5.0",
             
             "org.specs2"                        %%   "specs2"                   %   "1.9"      %  "test",
+            "org.mockito"                       %    "mockito-all"              %   "1.9.0"    %  "test",
             "com.novocode"                      %    "junit-interface"          %   "0.8"        %  "test",
             
             "org.fluentlenium"     %    "fluentlenium-festassert"             %   "0.5.6"      %  "test"

@@ -329,11 +329,26 @@ import play.api.libs.iteratee._
 
       def urldecode(data: String) = java.net.URLDecoder.decode(data, "UTF-8").split("\u0000").map(_.split(":")).map(p => p(0) -> p.drop(1).mkString(":")).toMap
 
+      // Do not change this unless you understand the security issues behind timing attacks.
+      // This method intentionally runs in constant time if the two strings have the same length.
+      // If it didn't, it would be vulnerable to a timing attack.
+      def safeEquals(a: String, b: String) = {
+        if (a.length != b.length) {
+          false
+        } else {
+          var equal = 0
+          for (i <- Array.range(0, a.length)) {
+            equal |= a(i) ^ b(i)
+          }
+          equal == 0
+        }
+      }
+
       try {
         if (isSigned) {
           val splitted = data.split("-")
           val message = splitted.tail.mkString("-")
-          if (splitted(0) == Crypto.sign(message))
+          if (safeEquals(splitted(0), Crypto.sign(message)))
             urldecode(message)
           else
             Map.empty[String, String]
@@ -436,6 +451,7 @@ import play.api.libs.iteratee._
     override val isSigned = true
     override val secure = Play.maybeApplication.flatMap(_.configuration.getBoolean("session.secure")).getOrElse(false)
     override val maxAge = Play.maybeApplication.flatMap(_.configuration.getInt("session.maxAge")).getOrElse(-1)
+    override val httpOnly = Play.maybeApplication.flatMap(_.configuration.getBoolean("session.httpOnly")).getOrElse(true)
 
     def deserialize(data: Map[String, String]) = new Session(data)
 
@@ -609,7 +625,7 @@ import play.api.libs.iteratee._
      * @return a valid Set-Cookie header value
      */
     def merge(cookieHeader: String, cookies: Seq[Cookie], discard: Seq[String] = Nil): String = {
-      encode(decode(cookieHeader) ++ cookies, discard)
+      encode(cookies ++ decode(cookieHeader), discard)
     }
 
   }
