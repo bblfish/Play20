@@ -65,7 +65,7 @@ object PlayBuild extends Build {
         libraryDependencies := testDependencies,
         publishTo := Some(playRepository),
         scalacOptions ++= Seq("-encoding", "UTF-8", "-Xlint","-deprecation", "-unchecked"),
-        javacOptions  ++= Seq("-source","1.6","-target","1.6", "-encoding", "UTF-8","-Xlint:unchecked", "-Xlint:deprecation"),
+        javacOptions  ++= Seq("-source","1.6","-target","1.6", "-encoding", "UTF-8","-Xlint:deprecation","-Xlint:unchecked"),
         publishArtifact in (Compile, packageDoc) := false,
         publishArtifact in (Compile, packageSrc) := true,
         resolvers += typesafe
@@ -194,7 +194,7 @@ object PlayBuild extends Build {
             
             "com.google.code.findbugs"          %    "jsr305"                   %   "2.0.0",
             
-            ("org.avaje"                        %    "ebean"                    %   "2.7.5" notTransitive())
+            ("org.avaje"                        %    "ebean"                    %   "2.7.3" notTransitive())
               .exclude("javax.persistence", "persistence-api")
             ,
             
@@ -226,7 +226,9 @@ object PlayBuild extends Build {
             ("org.springframework"              %    "spring-beans"             %   "3.0.7.RELEASE" notTransitive())
               .exclude("org.springframework", "spring-core")
             ,
-            
+
+
+            "commons-lang"                      %    "commons-lang"             %   "2.6",
             "joda-time"                         %    "joda-time"                %   "2.1",
             "org.joda"                          %    "joda-convert"             %   "1.2",
             "org.javassist"                     %    "javassist"                %   "3.16.1-GA",
@@ -249,13 +251,23 @@ object PlayBuild extends Build {
             "javax.servlet"                     %    "javax.servlet-api"        %   "3.0.1",
             "javax.transaction"                 %    "jta"                      %   "1.1",
             "tyrex"                             %    "tyrex"                    %   "1.0.1",
-            
+
+            ("jaxen"                            %    "jaxen"                    %   "1.1.3" notTransitive())
+              .exclude("maven-plugins", "maven-cobertura-plugin")
+              .exclude("maven-plugins", "maven-findbugs-plugin")
+              .exclude("dom4j", "dom4j")
+              .exclude("jdom", "jdom")
+              .exclude("xml-apis", "xml-apis")
+              .exclude("xerces", "xercesImpl")
+              .exclude("xom", "xom")
+            ,
+
             "net.sf.ehcache"                    %    "ehcache-core"             %   "2.5.0",
             
             "org.specs2"                        %%   "specs2"                   %   "1.9"      %  "test",
             "com.novocode"                      %    "junit-interface"          %   "0.8"        %  "test",
             
-            "org.fluentlenium"     %    "fluentlenium-festassert"             %   "0.6.0"      %  "test"
+            "org.fluentlenium"     %    "fluentlenium-festassert"             %   "0.5.6"      %  "test"
         )
 
         val sbtDependencies = Seq(
@@ -303,7 +315,7 @@ object PlayBuild extends Build {
             "org.specs2"                        %%   "specs2"                   %   "1.9",
             "com.novocode"                      %    "junit-interface"          %   "0.8",
             
-            "org.fluentlenium"     %    "fluentlenium-festassert"             %   "0.6.0"
+            "org.fluentlenium"     %    "fluentlenium-festassert"             %   "0.5.6"
         )
 
     }
