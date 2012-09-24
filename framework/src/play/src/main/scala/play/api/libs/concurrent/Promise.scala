@@ -11,6 +11,7 @@ import java.util.concurrent.{ TimeUnit }
 import scala.collection.mutable.Builder
 import scala.collection._
 import scala.collection.generic.CanBuildFrom
+import akka.util.Duration
 
 sealed trait PromiseValue[+A] {
   def isDefined = this match { case Waiting => false; case _ => true }
@@ -217,12 +218,30 @@ object PurePromise {
 
 object Promise {
 
-  private[concurrent] def invoke[T](t: => T): Promise[T] = akka.dispatch.Future { t }(Promise.system.dispatcher).asPromise
-  
-  /*private [concurrent] lazy val defaultTimeout = 
-    Duration(system.settings.config.getMilliseconds("promise.akka.actor.typed.timeout"), TimeUnit.MILLISECONDS).toMillis */
+  private var underlyingSystem: Option[ActorSystem] = Some(ActorSystem("promise"))
 
-  private [concurrent] lazy val system = ActorSystem("promise")
+  private[concurrent] def invoke[T](t: => T): Promise[T] = akka.dispatch.Future { t }(Promise.system.dispatcher).asPromise
+
+  private[concurrent] lazy val defaultTimeout =
+    Duration(system.settings.config.getMilliseconds("promise.akka.actor.typed.timeout"), TimeUnit.MILLISECONDS).toMillis
+
+  /**
+   * resets the underlying promise Actor System and clears Java actor references
+   */
+  def resetSystem(): Unit = {
+    underlyingSystem.filter(_.isTerminated == false).map { s =>
+      s.shutdown()
+      s.awaitTermination()
+    }.getOrElse(play.api.Logger.debug("trying to reset Promise actor system that was not started yet"))
+    play.libs.F.Promise.resetActors()
+    underlyingSystem = None
+  }
+
+  def system = underlyingSystem.getOrElse {
+      val a = ActorSystem("promise")
+      underlyingSystem = Some(a)
+   	  a
+  }
 
   def pure[A](a: => A): Promise[A] = PurePromise(a)
 

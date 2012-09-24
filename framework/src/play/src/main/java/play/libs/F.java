@@ -38,7 +38,7 @@ public class F {
     public static interface Callback3<A,B,C> {
         public void invoke(A a, B b, C c) throws Throwable;
     }
-    
+
     /**
      * A Function with no arguments.
      */
@@ -109,6 +109,14 @@ public class F {
          */
         public Promise(play.api.libs.concurrent.Promise<A> promise) {
             this.promise = promise;
+        }
+
+        /*
+         * reset underlying shared actors
+         * useful for mainly in tests
+         */
+        public static void resetActors() {
+            //what should one do here?
         }
 
         /**
@@ -342,7 +350,7 @@ public class F {
                 return None();
             }
         }
-        
+
     }
 
     /**

@@ -36,24 +36,37 @@ object WS {
 
   import com.ning.http.client.Realm.{ AuthScheme, RealmBuilder }
 
+  private var clientHolder: Option[AsyncHttpClient] = None
+
+  /**
+   * resets the underlying AsyncHttpClient
+   */
+  def resetClient(): Unit = {
+    clientHolder.map{clientRef =>
+      clientRef.close()
+    }.getOrElse(play.api.Logger.debug("WS client was reset without being used"))
+    clientHolder = None
+  }
+
   /**
    * The underlying HTTP client.
    */
-  lazy val client = {
-    import play.api.Play.current
-    val conf = current.configuration
-    val config = new AsyncHttpClientConfig.Builder()
-      .setConnectionTimeoutInMs(conf.getMilliseconds("ws.timeout").getOrElse(120000L).toInt)
-      .setRequestTimeoutInMs(conf.getMilliseconds("ws.timeout").getOrElse(120000L).toInt)
-      .setFollowRedirects(conf.getBoolean("ws.followRedirects").getOrElse(true))
-      .setMaximumConnectionsPerHost(conf.getInt("ws.maxConnectionsPerHost").getOrElse(15))
-      .setMaximumConnectionsTotal(conf.getInt("ws.maxConnectionsTotal").getOrElse(10000))
-      .setMaximumNumberOfRedirects(conf.getInt("ws.maxDefaultRedirects").getOrElse(7))
-      .setUseProxyProperties(conf.getBoolean("ws.useProxyProperties").getOrElse(true))
-    conf.getString("ws.useragent").map { useragent =>
-      config.setUserAgent(useragent)
+  def client = clientHolder.getOrElse {
+    val playConfig = play.api.Play.maybeApplication.map(_.configuration)
+    val asyncHttpConfig = new AsyncHttpClientConfig.Builder()
+      .setConnectionTimeoutInMs(playConfig.flatMap(_.getMilliseconds("ws.timeout")).getOrElse(120000L).toInt)
+      .setRequestTimeoutInMs(playConfig.flatMap(_.getMilliseconds("ws.timeout")).getOrElse(120000L).toInt)
+      .setFollowRedirects(playConfig.flatMap(_.getBoolean("ws.followRedirects")).getOrElse(true))
+      .setMaximumConnectionsPerHost(playConfig.flatMap(_.getInt("ws.maxConnectionsPerHost")).getOrElse(15))
+      .setMaximumConnectionsTotal(playConfig.flatMap(_.getInt("ws.maxConnectionsTotal")).getOrElse(10000))
+      .setMaximumNumberOfRedirects(playConfig.flatMap(_.getInt("ws.maxDefaultRedirects")).getOrElse(7))
+      .setUseProxyProperties(playConfig.flatMap(_.getBoolean("ws.useProxyProperties")).getOrElse(true))
+    playConfig.flatMap(_.getString("ws.useragent")).map { useragent =>
+      asyncHttpConfig.setUserAgent(useragent)
     }
-    new AsyncHttpClient(config.build())
+    val innerClient = new AsyncHttpClient(asyncHttpConfig.build())
+    clientHolder = Some(innerClient)
+    innerClient
   }
 
   /**
