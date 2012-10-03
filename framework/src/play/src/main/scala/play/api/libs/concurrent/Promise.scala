@@ -13,19 +13,37 @@ import scala.collection._
 import scala.collection.generic.CanBuildFrom
 import akka.util.Duration
 
+import play.api.libs.concurrent.execution.defaultContext
+
+/**
+ *The state of a promise; it's waiting, contains a value, or contains an exception.
+ */
 sealed trait PromiseValue[+A] {
+  
+  /** 
+   * true if the promise has either a value or an exception. 
+   */
   def isDefined = this match { case Waiting => false; case _ => true }
 }
 
+/**
+ *A promise state that contains either a value or an exception.
+ */
 trait NotWaiting[+A] extends PromiseValue[A] {
+
   /**
-   * Return the value or the promise, throw it if it held an exception
+  * Return the value or the promise, or throw it if it held an exception.
    */
   def get: A = this match {
     case Thrown(e) => throw e
     case Redeemed(a) => a
   }
 
+  /** 
+   *Invoke either onError with the promise's exception or onSuccess with its value. 
+   * @param onError contains function that's executed in case of error 
+   * @param onSuccess contains function that's executed in case of success
+   */
   def fold[B](onError: Throwable => B, onSuccess: A => B): B = this match {
     case Thrown(e) => onError(e)
     case Redeemed(r) => onSuccess(r)
@@ -33,8 +51,19 @@ trait NotWaiting[+A] extends PromiseValue[A] {
 
 }
 
+/**
+ * A promise state containing an exception. 
+ */
 case class Thrown(e: scala.Throwable) extends NotWaiting[Nothing]
+
+/**
+ * A promise state containing a non-exception value.
+ */
 case class Redeemed[+A](a: A) extends NotWaiting[A]
+
+/**
+ * A promise state indicating it has not been completed yet.
+ */
 case object Waiting extends PromiseValue[Nothing]
 
 trait Promise[+A] {
@@ -233,7 +262,7 @@ object Promise {
       s.shutdown()
       s.awaitTermination()
     }.getOrElse(play.api.Logger.debug("trying to reset Promise actor system that was not started yet"))
-    play.libs.F.Promise.resetActors()
+//    play.libs.F.Promise.resetActors()
     underlyingSystem = None
   }
 
