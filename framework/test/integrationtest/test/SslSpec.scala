@@ -1,5 +1,5 @@
 import java.io.{InputStreamReader, FileInputStream, File}
-import java.net.{HttpURLConnection, URL}
+import java.net.{HttpURLConnection, URL, URLConnection, Socket}
 import java.security.cert.X509Certificate
 import java.security.KeyStore
 import javax.net.ssl._
@@ -26,7 +26,6 @@ class SslSpec extends Specification {
       conn.getResponseCode must_== 200
       conn.getPeerPrincipal must_== new X500Principal(FakeKeyStore.DnName)
     }
-
     "use a configured keystore" in new Ssl(keyStore = Some("conf/testkeystore.jks"), password = Some("password")) {
       val conn = createConn
       conn.getResponseCode must_== 200
@@ -34,13 +33,7 @@ class SslSpec extends Specification {
     }
     "report a tampered keystore" in new Ssl(keyStore = Some("conf/badKeystore.jks"), password = Some("password")) {
       val conn = createConn
-      conn.getResponseCode must throwA[java.io.IOException].like {
-        case e => e.getMessage must startWith("Remote host closed connection during handshake")        
-        /*
-          What I'd really like to test for is that the log contains "Keystore was tampered with, or password was incorrect"
-          but I don't know how to do that...
-        */
-      }
+      conn.getResponseCode must throwA[java.io.IOException] //different VMs return different exceptions here.
     }
     
   }
