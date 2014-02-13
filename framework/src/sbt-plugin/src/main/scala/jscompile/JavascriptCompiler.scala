@@ -26,18 +26,22 @@ object JavascriptCompiler {
   def compile(source: File, simpleCompilerOptions: Seq[String], fullCompilerOptions: Option[CompilerOptions]): (String, Option[String], Seq[File]) = {
     import scala.util.control.Exception._
 
-    val simpleCheck = simpleCompilerOptions.contains("rjs")
+    val requireJsMode = simpleCompilerOptions.contains("rjs")
+    val commonJsMode = simpleCompilerOptions.contains("commonJs") && !requireJsMode
 
     val origin = Path(source).string
 
     val options = fullCompilerOptions.getOrElse {
       val defaultOptions = new CompilerOptions()
       defaultOptions.closurePass = true
-      if (!simpleCheck) {
+
+      if (commonJsMode) {
         defaultOptions.setProcessCommonJSModules(true)
-        defaultOptions.setCommonJSModulePathPrefix(source.getParent() + File.separator)
+        // The compiler always expects forward slashes even on Windows.
+        defaultOptions.setCommonJSModulePathPrefix((source.getParent() + File.separator).replaceAll("\\\\", "/"))
         defaultOptions.setManageClosureDependencies(Seq(toModuleName(source.getName())).asJava)
       }
+
       simpleCompilerOptions.foreach(_ match {
         case "advancedOptimizations" => CompilationLevel.ADVANCED_OPTIMIZATIONS.setOptionsForCompilationLevel(defaultOptions)
         case "checkCaja" => defaultOptions.setCheckCaja(true)
@@ -52,10 +56,12 @@ object JavascriptCompiler {
 
     val compiler = new Compiler()
     lazy val all = allSiblings(source)
-    val input = if (!simpleCheck) all.map(f => JSSourceFile.fromFile(f)).toArray else Array(JSSourceFile.fromFile(source))
+    // In commonJsMode, we use all JavaScript sources in the same directory for some reason.
+    // Otherwise, we only look at the current file.
+    val input = if (commonJsMode) all.map(f => JSSourceFile.fromFile(f)).toArray else Array(JSSourceFile.fromFile(source))
 
     catching(classOf[Exception]).either(compiler.compile(Array[JSSourceFile](), input, options).success) match {
-      case Right(true) => (origin, { if (!simpleCheck) Some(compiler.toSource()) else None }, Nil)
+      case Right(true) => (origin, { if (!requireJsMode) Some(compiler.toSource()) else None }, Nil)
       case Right(false) => {
         val error = compiler.getErrors().head
         val errorFile = all.find(f => f.getAbsolutePath() == error.sourceName)
@@ -128,7 +134,7 @@ object JavascriptCompiler {
     val scope = ctx.initStandardObjects(global)
     val writer = new java.io.StringWriter()
     try {
-      val defineArguments = """arguments = ['-o', '""" + source.getAbsolutePath + "']"
+      val defineArguments = """arguments = ['-o', '""" + source.getAbsolutePath.replace(File.separatorChar, '/') + "']"
       ctx.evaluateString(scope, defineArguments, null,
         1, null)
       val r = ctx.evaluateReader(scope, new InputStreamReader(

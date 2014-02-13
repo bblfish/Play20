@@ -43,7 +43,7 @@ A `WebSocket` has access to the request headers (from the HTTP request that init
 When constructing a `WebSocket` this way, we must return both `in` and `out` channels.
 
 - The `in` channel is an `Iteratee[A,Unit]` (where `A` is the message type - here we are using `String`) that will be notified for each message, and will receive `EOF` when the socket is closed on the client side.
-- The `out` channel is en `Enumerator[A]` that will generate the messages to be sent to the Web client. It can close the connection on the server side by sending `EOF`.
+- The `out` channel is an `Enumerator[A]` that will generate the messages to be sent to the Web client. It can close the connection on the server side by sending `EOF`.
 
 It this example we are creating a simple iteratee that prints each message to console. To send messages, we create a simple dummy enumerator that will send a single **Hello!** message.
 
@@ -61,6 +61,27 @@ def index = WebSocket.using[String] { request =>
   val out = Enumerator("Hello!").andThen(Enumerator.eof)
   
   (in, out)
+}
+```
+
+Here is another example in which the input data is logged to standard out and broadcast by to the client utilizing 'Concurrent.broadcast'.
+
+```scala
+//This shows an updated websocket example for play 2.2.0 utilizing Concurrent.broadcast vs Enumerator.imperative, which is now deprecated.
+
+ def index =  WebSocket.using[String] { request =>
+ 
+   //Concurernt.broadcast returns (Enumerator, Concurrent.Channel)
+    val (out,channel) = Concurrent.broadcast[String]
+ 
+    //log the message to stdout and send response back to client
+    val in = Iteratee.foreach[String] {
+      msg => println(msg)
+             //the Enumerator returned by Concurrent.broadcast subscribes to the channel and will 
+             //receive the pushed messages
+             channel push("RESPONSE: " + msg)
+    }
+    (in,out)
 }
 ```
 

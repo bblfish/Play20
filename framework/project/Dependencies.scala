@@ -17,7 +17,7 @@ object Dependencies {
 
 
   val jdbcDeps = Seq(
-    "com.jolbox" % "bonecp" % "0.8.0-rc1" exclude ("com.google.guava", "guava"),
+    "com.jolbox" % "bonecp" % "0.8.0.RELEASE" exclude ("com.google.guava", "guava"),
 
     // bonecp needs it, but due to guavas stupid version numbering of older versions ("r08"), we need to explicitly
     // declare a dependency on the newer version so that ivy can know which one to include
@@ -154,9 +154,9 @@ object Dependencies {
 
     "net.contentobjects.jnotify" % "jnotify" % "0.94",
 
-    "com.typesafe.sbteclipse" % "sbteclipse-plugin" % "2.3.0" extra("sbtVersion" -> BuildSettings.buildSbtVersionBinaryCompatible, "scalaVersion" -> BuildSettings.buildScalaBinaryVersionForSbt),
+    "com.typesafe.sbteclipse" % "sbteclipse-plugin" % "2.4.0" extra("sbtVersion" -> BuildSettings.buildSbtVersionBinaryCompatible, "scalaVersion" -> BuildSettings.buildScalaBinaryVersionForSbt),
     "com.github.mpeltonen" % "sbt-idea" % "1.5.1" extra("sbtVersion" -> BuildSettings.buildSbtVersionBinaryCompatible, "scalaVersion" -> BuildSettings.buildScalaBinaryVersionForSbt),
-    "com.typesafe.sbt" % "sbt-native-packager" % "0.6.2" extra("sbtVersion" ->  BuildSettings.buildSbtVersionBinaryCompatible, "scalaVersion" -> BuildSettings.buildScalaBinaryVersionForSbt),
+    "com.typesafe.sbt" % "sbt-native-packager" % "0.6.4" extra("sbtVersion" ->  BuildSettings.buildSbtVersionBinaryCompatible, "scalaVersion" -> BuildSettings.buildScalaBinaryVersionForSbt),
 
     specsSbt
   )

@@ -57,12 +57,37 @@ object ScalaResultsHandlingSpec extends PlaySpecification {
       response.body must_== "abc"
     }
 
-    "close the connection for feed results" in makeRequest(
+    "close the connection for feed results" in withServer(
       Results.Ok.feed(Enumerator("a", "b", "c"))
-    ) { response =>
-      response.header(TRANSFER_ENCODING) must beNone
-      response.header(CONTENT_LENGTH) must beNone
-      response.body must_== "abc"
+    ) { port =>
+      val response = BasicHttpClient.makeRequests(port, checkClosed = true)(
+        BasicRequest("GET", "/", "HTTP/1.1", Map(), "")
+      )(0)
+      response.status must_== 200
+      response.headers.get(TRANSFER_ENCODING) must beNone
+      response.headers.get(CONTENT_LENGTH) must beNone
+      response.headers.get(CONNECTION) must beSome("close")
+      response.body must beLeft("abc")
+    }
+
+    "close the HTTP 1.1 connection when requested" in withServer(
+      Results.Ok.copy(connection = HttpConnection.Close)
+    ) { port =>
+      val response = BasicHttpClient.makeRequests(port, checkClosed = true)(
+        BasicRequest("GET", "/", "HTTP/1.1", Map(), "")
+      )(0)
+      response.status must_== 200
+      response.headers.get(CONNECTION) must beSome("close")
+    }
+
+    "close the HTTP 1.0 connection when requested" in withServer(
+      Results.Ok.copy(connection = HttpConnection.Close)
+    ) { port =>
+      val response = BasicHttpClient.makeRequests(port, checkClosed = true)(
+        BasicRequest("GET", "/", "HTTP/1.0", Map("Connection" -> "keep-alive"), "")
+      )(0)
+      response.status must_== 200
+      response.headers.get(CONNECTION) must beNone
     }
 
     "close the connection when the connection close header is present" in withServer(
@@ -89,6 +114,7 @@ object ScalaResultsHandlingSpec extends PlaySpecification {
         BasicRequest("GET", "/", "HTTP/1.0", Map(), "")
       )
       responses(0).status must_== 200
+      responses(0).headers.get(CONNECTION) must beSome("keep-alive")
       responses(1).status must_== 200
     }
 
@@ -151,6 +177,36 @@ object ScalaResultsHandlingSpec extends PlaySpecification {
       response.headers.keySet must not contain CONTENT_LENGTH
       response.body must beLeft("abcdefghi")
     }
+
+    "Strip malformed cookies" in withServer(
+      Results.Ok
+    ) { port =>
+      val response = BasicHttpClient.makeRequests(port)(
+        BasicRequest("GET", "/", "HTTP/1.1", Map("Cookie" -> """£"""), "")
+      )(0)
+
+      response.status must_== 200
+      response.body must beLeft
+    }
+
+    "reject HTTP 1.0 requests for chunked results" in withServer(
+      Results.Ok.chunked(Enumerator("a", "b", "c"))
+    ) { port =>
+      val response = BasicHttpClient.makeRequests(port)(
+        BasicRequest("GET", "/", "HTTP/1.0", Map(), "")
+      )(0)
+      response.status must_== HTTP_VERSION_NOT_SUPPORTED
+      response.body must beLeft("The response to this request is chunked and hence requires HTTP 1.1 to be sent, but this is a HTTP 1.0 request.")
+    }
+
+    "not send empty chunks before the end of the enumerator stream" in makeRequest(
+      Results.Ok.chunked(Enumerator("foo", "", "bar"))
+    ) { response =>
+      response.header(TRANSFER_ENCODING) must beSome("chunked")
+      response.header(CONTENT_LENGTH) must beNone
+      response.body must_== "foobar"
+    }
+
   }
 
 }

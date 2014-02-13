@@ -54,11 +54,21 @@ object WS extends WSTrait {
    */
   def asyncBuilder: AsyncHttpClientConfig.Builder = {
     val playConfig = play.api.Play.maybeApplication.map(_.configuration)
-    val wsTimeout = playConfig.flatMap(_.getMilliseconds("ws.timeout"))
+
+    // allow config file to define ws.timeout as a number or as an object
+    def getMilliseconds(key: String) = {
+      try {
+        playConfig.flatMap(_.getMilliseconds(key))
+      } catch {
+        case e: Exception => None
+      }
+    }
+
+    val wsTimeout = getMilliseconds("ws.timeout")
     val asyncHttpConfig = new AsyncHttpClientConfig.Builder()
-      .setConnectionTimeoutInMs(playConfig.flatMap(_.getMilliseconds("ws.timeout.connection")).orElse(wsTimeout).getOrElse(120000L).toInt)
-      .setIdleConnectionTimeoutInMs(playConfig.flatMap(_.getMilliseconds("ws.timeout.idle")).orElse(wsTimeout).getOrElse(120000L).toInt)
-      .setRequestTimeoutInMs(playConfig.flatMap(_.getMilliseconds("ws.timeout.request")).getOrElse(120000L).toInt)
+      .setConnectionTimeoutInMs(getMilliseconds("ws.timeout.connection").orElse(wsTimeout).getOrElse(120000L).toInt)
+      .setIdleConnectionTimeoutInMs(getMilliseconds("ws.timeout.idle").orElse(wsTimeout).getOrElse(120000L).toInt)
+      .setRequestTimeoutInMs(getMilliseconds("ws.timeout.request").getOrElse(120000L).toInt)
       .setFollowRedirects(playConfig.flatMap(_.getBoolean("ws.followRedirects")).getOrElse(true))
       .setUseProxyProperties(playConfig.flatMap(_.getBoolean("ws.useProxyProperties")).getOrElse(true))
 
@@ -164,6 +174,8 @@ object WS extends WSTrait {
      * The URL
      */
     def url: String = _url
+
+    def urlWithQueryString: String = request.asInstanceOf[com.ning.http.client.Request].getUrl
 
     private def ningHeadersToMap(headers: java.util.Map[String, java.util.Collection[String]]) =
       mapAsScalaMapConverter(headers).asScala.map(e => e._1 -> e._2.asScala.toSeq).toMap

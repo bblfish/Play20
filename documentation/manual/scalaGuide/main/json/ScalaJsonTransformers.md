@@ -369,6 +369,7 @@ Please note the resulting JsObject hasn't same keys order as input JsObject. Thi
 
 ```
 import play.api.libs.json._
+import play.api.libs.json.Reads._
 
 val jsonTransformer = (__ \ 'key2).json.pickBranch(
   (__ \ 'key21).json.update( 
@@ -511,6 +512,7 @@ Ok let's write a JSON transformer to do this transformation
 
 ```
 import play.api.libs.json._
+import play.api.libs.json.Reads._
 import play.api.libs.functional.syntax._
 
 val gizmo2gremlin = (

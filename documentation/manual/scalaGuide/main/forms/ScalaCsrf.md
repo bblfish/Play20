@@ -3,7 +3,7 @@
 
 Cross Site Request Forgery (CSRF) is a security exploit where an attacker tricks a victims browser into making a request using the victims session.  Since the session token is sent with every request, if an attacker can coerce the victims browser to make a request on their behalf, the attacker can make requests on the users behalf.
 
-It is recommended that you familiarise yourself with CSRF, what the attack vectors are, and what the attack vectors or not.  We recommend starting with [this information from OWASP](https://www.owasp.org/index.php/Cross-Site_Request_Forgery_%28CSRF%29).
+It is recommended that you familiarise yourself with CSRF, what the attack vectors are, and what the attack vectors are not.  We recommend starting with [this information from OWASP](https://www.owasp.org/index.php/Cross-Site_Request_Forgery_%28CSRF%29).
 
 Simply put, an attacker can coerce a victims browser to make the following types of requests:
 
@@ -30,12 +30,10 @@ To allow simple protection for non browser requests, such as requests made throu
 
 ## Applying a global CSRF filter
 
-Play provides a global CSRF filter that can be applied to all requests.  This is the simplest way to add CSRF protection to an application.  To enable the global filter, add the Play filters helpers dependency to your project in `Build.scala`:
+Play provides a global CSRF filter that can be applied to all requests.  This is the simplest way to add CSRF protection to an application.  To enable the global filter, add the Play filters helpers dependency to your project in `build.sbt`:
 
 ```scala
-val appDependencies = Seq(
-  filters
-)
+libraryDependencies += filters
 ```
 
 Now add the filter to your `Global` object:
@@ -101,4 +99,14 @@ Then you can minimise the boiler plate code necessary to write actions:
 
 @[csrf-actions](code/ScalaCsrf.scala)
 
-> **Next:** [[Working with JSON|ScalaJson]]
+## CSRF configuration options
+
+The following options can be configured in `application.conf`:
+
+* `csrf.token.name` - The name of the token to use both in the session and in the request body/query string. Defaults to `csrfToken`.
+* `csrf.cookie.name` - If configured, Play will store the CSRF token in a cookie with the given name, instead of in the session.
+* `csrf.cookie.secure` - If `csrf.cookie.name` is set, whether the CSRF cookie should have the secure flag set.  Defaults to the same value as `session.secure`.
+* `csrf.body.bufferSize` - In order to read tokens out of the body, Play must first buffer the body and potentially parse it.  This sets the maximum buffer size that will be used to buffer the body.  Defaults to 100k.
+* `csrf.sign.tokens` - Whether Play should use signed CSRF tokens.  Signed CSRF tokens ensure that the token value is randomised per request, thus defeating BREACH style attacks.
+
+> **Next:** [[Custom Validations|ScalaCustomValidations]]

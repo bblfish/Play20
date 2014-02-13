@@ -1,4 +1,3 @@
-<!--- Copyright (C) 2009-2013 Typesafe Inc. <http://www.typesafe.com> -->
 # Your first Play application
 
 Let’s write a simple task list application with Play and deploy it to the cloud. This is a very small example which can be managed in a few hours.
@@ -111,7 +110,7 @@ This template is defined in the `app/views/index.scala.html` source file:
 
 The first line defines the function signature. Here it takes a single `String` parameter. Then the template content mixes HTML (or any text-based language) with Scala statements. The Scala statements start with the special `@` character.
 
-> **Note:** Don’t worry about the template engine using Scala as its expression language. This is not a problem for a Java developer, and you can almost use it as if the language was Java. We explain the templating system in a bit more deatil below.
+> **Note:** Don’t worry about the template engine using Scala as its expression language. This is not a problem for a Java developer, and you can almost use it as if the language was Java. We explain the templating system in a bit more detail below.
 
 ## Development work-flow
 
@@ -393,18 +392,7 @@ public class Task extends Model {
 
 We made the `Task` class extend the `play.db.ebean.Model` super class to have access to Play built-in Ebean helper. We also added proper persistence annotations, and created a `find` helper to initiate queries.
 
-Next there need to be done some changes in the configuration file. Open `application.conf` and uncomment the following lines:
-
-```
-#db.default.driver=org.h2.Driver
-#db.default.url="jdbc:h2:mem:play"
-#db.default.user=sa
-#db.default.password=""
-
-#ebean.default="models.*"
-```
-
-Finally, let’s implement the CRUD operations:
+Let’s implement the CRUD operations:
 
 ```
 public static List<Task> all() {
@@ -420,10 +408,6 @@ public static void delete(Long id) {
 }
 ```
 
-When you now reload the web page you shoud see the following error message: `Database 'default' needs evolution!`
-
-Click the button `Apply this script now!`, to instruct play to create all necessary database files.
-
 Now you can play again with the application, creating new tasks should work.
 
 [[images/filled.png]]
@@ -434,7 +418,7 @@ Now you can play again with the application, creating new tasks should work.
 
 Now that we can create tasks, we need to be able to delete them. Very simple, we just need to finish the implementation of the `deleteTask` action:
 
-```
+```java
 public static Result deleteTask(Long id) {
   Task.delete(id);
   return redirect(routes.Application.tasks());
@@ -446,22 +430,17 @@ public static Result deleteTask(Long id) {
 All features are completed. It’s time to deploy our application in production. Let’s deploy it to heroku. First you have to create a `Procfile` for Heroku in the root application directory:
 
 ```
-web: target/start -Dhttp.port=${PORT} -DapplyEvolutions.default=true -Ddb.default.url=${DATABASE_URL} -Ddb.default.driver=org.postgresql.Driver
+web: target/universal/stage/bin/{your project name} -Dhttp.port=${PORT} -DapplyEvolutions.default=true -Ddb.default.url=${DATABASE_URL} -Ddb.default.driver=org.postgresql.Driver
 ```
 
 > **Note:** Read more about [[Deploying to Heroku|ProductionHeroku]].
 
 Using system properties we override the application configuration when running on Heroku. But since heroku provides a PostgreSQL database we’ll have to add the required driver to our application dependencies. 
 
-Specify it into the `build.sbt` file:
+Specify it in the `build.sbt` file:
 
 ```scala
-libraryDependencies ++= Seq(
-  javaJdbc,
-  javaEbean,
-  cache,
-  "postgresql" % "postgresql" % "8.4-702.jdbc4"
-)
+libraryDependencies += "postgresql" % "postgresql" % "8.4-702.jdbc4"
 ```
 
 > **Note:** Read more about [[Dependencies management|SBTDependencies]].

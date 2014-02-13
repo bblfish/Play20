@@ -324,7 +324,7 @@ private[db] class BoneCPApi(configuration: Configuration, classloader: ClassLoad
 
       override def onCheckIn(connection: ConnectionHandle) {
         if (logger.isTraceEnabled) {
-          logger.trace("Check in connection [%s leased]".format(datasource.getTotalLeased))
+          logger.trace("Check in connection %s [%s leased]".format(connection.toString, datasource.getTotalLeased))
         }
       }
 
@@ -334,7 +334,7 @@ private[db] class BoneCPApi(configuration: Configuration, classloader: ClassLoad
         connection.setReadOnly(readOnly)
         catalog.map(connection.setCatalog(_))
         if (logger.isTraceEnabled) {
-          logger.trace("Check out connection [%s leased]".format(datasource.getTotalLeased))
+          logger.trace("Check out connection %s [%s leased]".format(connection.toString, datasource.getTotalLeased))
         }
       }
 
@@ -385,10 +385,7 @@ private[db] class BoneCPApi(configuration: Configuration, classloader: ClassLoad
     datasource.setDisableJMX(conf.getBoolean("disableJMX").getOrElse(true))
     datasource.setStatisticsEnabled(conf.getBoolean("statisticsEnabled").getOrElse(false))
     datasource.setIdleConnectionTestPeriod(conf.getMilliseconds("idleConnectionTestPeriod").getOrElse(1000 * 60), java.util.concurrent.TimeUnit.MILLISECONDS)
-    // Release helper threads has caused users issues, and the feature has been removed altogether from BoneCP 0.8.0
-    // (which is yet to be released) because it offered no real performance advantage.  Once we upgrade to BoneCP 0.8.x,
-    // we can remove this line.  https://play.lighthouseapp.com/projects/82401/tickets/754-cannot-set-important-bonecp-parameter-in-configuration
-    datasource.setReleaseHelperThreads(0)
+    datasource.setDisableConnectionTracking(conf.getBoolean("disableConnectionTracking").getOrElse(true))
 
     conf.getString("initSQL").map(datasource.setInitSQL(_))
     conf.getBoolean("logStatements").map(datasource.setLogStatementsEnabled(_))

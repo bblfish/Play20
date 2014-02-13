@@ -32,37 +32,35 @@ object NettyResultStreamer {
    * @return A Future that will be redeemed when the result is completely sent
    */
   def sendResult(result: SimpleResult, closeConnection: Boolean, httpVersion: HttpVersion, startSequence: Int)(implicit ctx: ChannelHandlerContext, oue: OrderedUpstreamMessageEvent): Future[_] = {
-    val nettyResponse = createNettyResponse(result.header, closeConnection, httpVersion)
-
     // Result of this iteratee is a completion status
-    val bodyIteratee: Iteratee[Array[Byte], ChannelStatus] = result match {
+    val sentResponse: Future[ChannelStatus] = result match {
 
       // Sanitisation: ensure that we don't send chunked responses to HTTP 1.0 requests
       case UsesTransferEncoding() if httpVersion == HttpVersion.HTTP_1_0 => {
         // Make sure enumerator knows it's done, so that any resources it uses can be cleaned up
         result.body |>> Done(())
 
+        Play.logger.debug("Chunked response to HTTP/1.0 request, sending 505 response.")
         val error = Results.HttpVersionNotSupported("The response to this request is chunked and hence requires HTTP 1.1 to be sent, but this is a HTTP 1.0 request.")
-        nettyStreamIteratee(createNettyResponse(error.header, closeConnection, httpVersion), startSequence, closeConnection)
+        error.body |>>> nettyStreamIteratee(createNettyResponse(error.header, closeConnection, httpVersion), startSequence, closeConnection)
       }
 
       case CloseConnection() => {
-        nettyStreamIteratee(nettyResponse, startSequence, true)
+        result.body |>>> nettyStreamIteratee(createNettyResponse(result.header, true, httpVersion), startSequence, true)
       }
 
       case EndOfBodyInProtocol() => {
-        nettyStreamIteratee(nettyResponse, startSequence, closeConnection)
+        result.body |>>> nettyStreamIteratee(createNettyResponse(result.header, closeConnection, httpVersion), startSequence, closeConnection)
       }
 
       case _ => {
-        bufferingIteratee(nettyResponse, startSequence, closeConnection, httpVersion)
+        result.body |>>> bufferingIteratee(createNettyResponse(result.header, closeConnection, httpVersion), startSequence, closeConnection, httpVersion)
       }
 
     }
 
     // Clean up
     import play.api.libs.iteratee.Execution.Implicits.trampoline
-    val sentResponse = result.body |>>> bodyIteratee
     sentResponse.onComplete {
       case Success(cs: ChannelStatus) =>
         if (cs.closeConnection) {
@@ -174,6 +172,8 @@ object NettyResultStreamer {
     // Response header Connection: Keep-Alive is needed for HTTP 1.0
     if (!closeConnection && httpVersion == HttpVersion.HTTP_1_0) {
       nettyResponse.setHeader(CONNECTION, KEEP_ALIVE)
+    } else if (closeConnection && httpVersion == HttpVersion.HTTP_1_1) {
+      nettyResponse.setHeader(CONNECTION, CLOSE)
     }
 
     nettyResponse
