@@ -3,6 +3,8 @@
  */
 package play.api.mvc
 
+import java.security.cert.Certificate
+
 import org.specs2.mutable.Specification
 import scala.concurrent.Await
 import scala.concurrent.Future
@@ -111,7 +113,9 @@ object ContentTypesSpec extends Specification {
     def testMultiPart(testMultipartBody: String) = {
 
       def await[T](f: Future[T]) = Await.result(f, Duration("5 seconds"))
-    	case class TestRequestHeader(headers: Headers, method: String = "GET", uri: String = "/", path: String = "", remoteAddress: String = "127.0.0.1", version: String = "HTTP/1.1", id: Long = 1, tags: Map[String, String] = Map.empty[String, String], queryString: Map[String, Seq[String]] = Map(), secure: Boolean = false) extends RequestHeader
+    	case class TestRequestHeader(headers: Headers, method: String = "GET", uri: String = "/", path: String = "", remoteAddress: String = "127.0.0.1", version: String = "HTTP/1.1", id: Long = 1, tags: Map[String, String] = Map.empty[String, String], queryString: Map[String, Seq[String]] = Map(), secure: Boolean = false) extends RequestHeader {
+        override def certs(required: Boolean): Future[Seq[Certificate]] = Future.failed(???)
+      }
       val multipartFormDataParser = BodyParsers.parse.multipartFormData
 
       val rh = TestRequestHeader(headers = new Headers {

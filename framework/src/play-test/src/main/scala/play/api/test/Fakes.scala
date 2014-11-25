@@ -3,6 +3,8 @@
  */
 package play.api.test
 
+import java.security.cert.Certificate
+
 import play.api.mvc._
 import play.api.libs.json.JsValue
 import scala.concurrent.Future
@@ -107,7 +109,7 @@ case class FakeRequest[A](method: String, uri: String, headers: FakeHeaders, bod
     _copy(body = AnyContentAsFormUrlEncoded(play.utils.OrderPreserving.groupBy(data.toSeq)(_._1)))
   }
 
-  def certs = Future.successful(IndexedSeq.empty)
+  def certs(required: Boolean=false): Future[Seq[Certificate]] = Future.successful(IndexedSeq.empty)
 
   /**
    * Sets a JSON body to this request.

@@ -3,6 +3,7 @@
  */
 package play.core.j
 
+import java.security.cert.Certificate
 import play.mvc.{ Result => JResult }
 import play.mvc.Http.{ Context => JContext, Request => JRequest, Cookies => JCookies, Cookie => JCookie }
 
@@ -55,7 +56,7 @@ trait JavaHelpers {
 
   /**
    * creates a java request (with an empty body) from a scala RequestHeader
-   * @param request incoming requestHeader
+   * @param req incoming requestHeader
    */
   def createJavaRequest(req: RequestHeader): JRequest = {
     new JRequest {
@@ -109,6 +110,16 @@ trait JavaHelpers {
           req.cookies.toIterator.map(makeJavaCookie).asJava
         }
       }
+
+
+      def certs(required: Boolean) = F.Promise.wrap(req.certs(required)).map(
+        new F.Function[scala.Seq[Certificate], java.util.List[Certificate]]() {
+
+          @Override
+          def apply(s: scala.Seq[Certificate]): java.util.List[Certificate] = {
+            s.asJava
+          }
+        })
 
       override def toString = req.toString
 
@@ -186,6 +197,15 @@ trait JavaHelpers {
           req.cookies.toIterator.map(makeJavaCookie).asJava
         }
       }
+
+      def certs(required: Boolean) = F.Promise.wrap(req.certs(required)).map(
+        new F.Function[scala.Seq[Certificate], java.util.List[Certificate]]() {
+
+          @Override
+          def apply(s: scala.Seq[Certificate]): java.util.List[Certificate] = {
+            s.asJava
+          }
+        })
 
       override def toString = req.toString
 

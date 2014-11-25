@@ -3,6 +3,9 @@
  */
 package play.data
 
+import java.security.cert.Certificate
+import concurrent.Future
+
 import org.specs2.mutable.Specification
 import play.mvc._
 import play.mvc.Http.Context
@@ -163,6 +166,8 @@ class DummyRequest(data: Map[String, Array[String]]) extends play.mvc.Http.Reque
   def headers() = new java.util.HashMap[String, Array[String]]()
   val remoteAddress = "127.0.0.1"
   def secure() = false
+  def certs(required: Boolean): play.libs.F.Promise[java.util.List[Certificate]] =
+    play.libs.F.Promise.wrap(Future.failed(???))
   def body() = new Http.RequestBody {
     override def asFormUrlEncoded = data.asJava
     override def asRaw = null
