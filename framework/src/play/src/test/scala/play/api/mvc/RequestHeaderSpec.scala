@@ -3,6 +3,9 @@
  */
 package play.api.mvc
 
+import java.security.cert.Certificate
+import scala.concurrent.Future
+
 import org.specs2.mutable.Specification
 import play.api.i18n.Lang
 
@@ -53,6 +56,7 @@ class RequestHeaderSpec extends Specification {
     def queryString = Map()
     def remoteAddress = ""
     def secure = false
+    def certs(required: Boolean): Future[Seq[Certificate]] = Future.failed(???)
     lazy val headers = new Headers { val data = headersMap.toSeq }
   }
 }
