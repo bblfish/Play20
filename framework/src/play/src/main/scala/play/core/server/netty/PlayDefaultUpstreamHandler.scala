@@ -51,7 +51,6 @@ private[play] class PlayDefaultUpstreamHandler(server: Server, allChannels: Defa
       case e: SSLHandshakeException =>
         // This could be thrown when requesting a peer certificate, and none is provided
         Logger.trace("SSL Handshake exception", e)
-        event.getChannel.close()
       // IO exceptions happen all the time, it usually just means that the client has closed the connection before fully
       // sending/receiving the response.
       case e: IOException =>
