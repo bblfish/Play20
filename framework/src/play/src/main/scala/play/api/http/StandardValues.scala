@@ -86,6 +86,7 @@ trait HttpVerbs {
   val DELETE = "DELETE"
   val HEAD = "HEAD"
   val OPTIONS = "OPTIONS"
+  val SEARCH = "SEARCH"
 }
 
 /** Common HTTP MIME types */
