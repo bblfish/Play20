@@ -318,7 +318,7 @@ public class Http {
 
         /**
          * Request a client certificate from the user.
-         * <p/>
+         * <p>
          * Calling this method will request the user to select an X509 Certificate from their key chain if they have one,
          * or return a cached certificate chain if the user has already selected one during the current TLS session.
          * Since requesting something of the user could take a lot of time, this is returned immediately as a Future.
