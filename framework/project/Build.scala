@@ -94,11 +94,37 @@ object BuildSettings {
      */
     publishTo := Some(Resolver.file("Unused transient repository", file("target/unusedrepo")))
   )
-  val publishSettings = Seq(
-    publishArtifact in packageDoc := buildWithDoc,
-    publishArtifact in (Compile, packageSrc) := true,
-    publishTo := Some(publishingMavenRepository)
-  )
+//  val publishSettings = Seq(
+//    publishArtifact in packageDoc := buildWithDoc,
+//    publishArtifact in (Compile, packageSrc) := true,
+//    publishTo := Some(publishingMavenRepository)
+//  )
+
+  //sbt -Dbanana.publish=bblfish.net:/home/hjs/htdocs/work/repo/
+  //sbt -Dbanana.publish=bintray
+  def publishSettings =
+    (Option(System.getProperty("banana.publish")) match {
+//      case Some("bintray") => Seq(
+//        // bintray
+//        repository in bintray := "banana-rdf",
+//        bintrayOrganization in bintray := None
+//      ) ++ bintrayPublishSettings
+      case opt: Option[String] => {
+        Seq(
+          publishTo <<= version { (v: String) =>
+            val nexus = "https://oss.sonatype.org/"
+            val other = opt.map(_.split(":"))
+            if (v.trim.endsWith("SNAPSHOT")) {
+              val repo = other.map(p => Resolver.ssh("banana.publish specified server", p(0), p(1) + "snapshots"))
+              repo.orElse(Some("snapshots" at nexus + "content/repositories/snapshots"))
+            } else {
+              val repo = other.map(p => Resolver.ssh("banana.publish specified server", p(0), p(1) + "releases"))
+              repo.orElse(Some("releases" at nexus + "service/local/staging/deploy/maven2"))
+            }
+          }
+        )
+      }
+    }) ++ Seq(publishArtifact in Test := false)
 
   def PlaySharedJavaProject(name: String, dir: String, testBinaryCompatibility: Boolean = false): Project = {
     val bcSettings: Seq[Setting[_]] = mimaDefaultSettings ++ (if (testBinaryCompatibility) {
