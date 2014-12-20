@@ -102,7 +102,7 @@ object BuildSettings {
 
   //sbt -Dbanana.publish=bblfish.net:/home/hjs/htdocs/work/repo/
   //sbt -Dbanana.publish=bintray
-  def publishSettings =
+  def publishSettings(maven: Boolean=true) =
     (Option(System.getProperty("banana.publish")) match {
 //      case Some("bintray") => Seq(
 //        // bintray
@@ -112,13 +112,27 @@ object BuildSettings {
       case opt: Option[String] => {
         Seq(
           publishTo <<= version { (v: String) =>
+            import Resolver._
             val nexus = "https://oss.sonatype.org/"
             val other = opt.map(_.split(":"))
             if (v.trim.endsWith("SNAPSHOT")) {
-              val repo = other.map(p => Resolver.ssh("banana.publish specified server", p(0), p(1) + "snapshots"))
+              val repo = other.map(p => {
+                val path = p(1) + { if(maven) "" else "ivy/" }
+                ssh("banana.publish snapshots",
+                  p(0), path + "snapshots")(
+                    if (maven) mavenStylePatterns
+                    else ivyStylePatterns ) withPermissions ("0644")
+              })
               repo.orElse(Some("snapshots" at nexus + "content/repositories/snapshots"))
             } else {
-              val repo = other.map(p => Resolver.ssh("banana.publish specified server", p(0), p(1) + "releases"))
+              val repo = other.map(p => {
+                val path = p(1) + { if(maven) "" else "ivy/" }
+                Resolver.ssh("banana.publish release",
+                  p(0),
+                  path + "releases")(
+                    if (maven) mavenStylePatterns
+                    else ivyStylePatterns ) withPermissions ("0644")
+              })
               repo.orElse(Some("releases" at nexus + "service/local/staging/deploy/maven2"))
             }
           }
@@ -134,7 +148,7 @@ object BuildSettings {
       .configs(PerformanceTest)
       .settings(inConfig(PerformanceTest)(Defaults.testTasks) : _*)
       .settings(playCommonSettings: _*)
-      .settings((if (publishNonCoreScalaLibraries) publishSettings else dontPublishSettings): _*)
+      .settings((if (publishNonCoreScalaLibraries) publishSettings() else dontPublishSettings): _*)
       .settings(bcSettings: _*)
       .settings(
         scalaVersion := defaultScalaVersion,
@@ -161,7 +175,7 @@ object BuildSettings {
       .configs(PerformanceTest)
       .settings(inConfig(PerformanceTest)(Defaults.testTasks) : _*)
       .settings(playCommonSettings: _*)
-      .settings(publishSettings: _*)
+      .settings(publishSettings(): _*)
       .settings(mimaDefaultSettings: _*)
       .settings(defaultScalariformSettings: _*)
       .settings(playRuntimeSettings: _*)
@@ -176,7 +190,7 @@ object BuildSettings {
   def PlaySbtProject(name: String, dir: String): Project = {
     Project(name, file("src/" + dir))
       .settings(playCommonSettings: _*)
-      .settings((if (publishNonCoreScalaLibraries) publishSettings else dontPublishSettings): _*)
+      .settings((if (publishNonCoreScalaLibraries) publishSettings() else dontPublishSettings): _*)
       .settings(defaultScalariformSettings: _*)
       .settings(
         scalaVersion := buildScalaVersionForSbt,
@@ -249,9 +263,9 @@ object PlayBuild extends Build {
       libraryDependencies ++= runSupportDependencies
     )
 
-  lazy val SbtRunSupportProject = runSupportProject("SBT-Run-Support",SharedProjectScalaVersion.forScalaVersion(buildScalaVersionForSbt),(if (publishNonCoreScalaLibraries) publishSettings else dontPublishSettings))
+  lazy val SbtRunSupportProject = runSupportProject("SBT-Run-Support",SharedProjectScalaVersion.forScalaVersion(buildScalaVersionForSbt),(if (publishNonCoreScalaLibraries) publishSettings() else dontPublishSettings))
 
-  lazy val RunSupportProject = runSupportProject("Run-Support", SharedProjectScalaVersion.forScalaVersion(buildScalaVersion),publishSettings)
+  lazy val RunSupportProject = runSupportProject("Run-Support", SharedProjectScalaVersion.forScalaVersion(buildScalaVersion),publishSettings())
 
   lazy val RoutesCompilerProject = PlaySbtProject("Routes-Compiler", "routes-compiler")
     .settings(libraryDependencies ++= routersCompilerDependencies)
@@ -373,6 +387,7 @@ object PlayBuild extends Build {
       // processes classpath while it's actually being run by SBT 0.12... if it forks you get serialVersionUID errors.
       fork in Test := false
     ).settings(scriptedSettings: _*)
+    .settings(publishSettings(false): _*)
     .settings(
       scriptedLaunchOpts ++= Seq(
         "-XX:MaxPermSize=384M",
