@@ -25,7 +25,7 @@ public interface BuildLink {
      *
      * @return Either
      * <ul>
-     *     <li>Throwable - If something went wrong (eg, a compile error).  {@link play.api.PlayException} and its sub
+     *     <li>Throwable - If something went wrong (eg, a compile error).   play.api.PlayException and its sub
      *     types can be used to provide specific details on compile errors or other exceptions.</li>
      *     <li>ClassLoader - If the classloader has changed, and the application should be reloaded.</li>
      *     <li>null - If nothing changed.</li>
@@ -58,7 +58,7 @@ public interface BuildLink {
     public Object[] findSource(String className, Integer line);
 
     /**
-     * Get the path of the project.  This is used by methods such as {@link play.api.Application#getFile}.
+     * Get the path of the project.  This is used by methods such as play.api.Application#getFile.
      *
      * @return The path of the project.
      */

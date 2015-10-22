@@ -160,7 +160,7 @@ object BuildSettings {
       .configs(PerformanceTest)
       .settings(inConfig(PerformanceTest)(Defaults.testTasks) : _*)
       .settings(playCommonSettings: _*)
-      .settings((if (publishNonCoreScalaLibraries) publishSettings() else dontPublishSettings): _*)
+      .settings(publishSettings(): _*)
       .settings(bcSettings: _*)
       .settings(
         scalaVersion := defaultScalaVersion,
@@ -177,6 +177,7 @@ object BuildSettings {
     Project(name, file("src/" + dir))
       .disablePlugins(BintrayPlugin)
       .settings(playCommonSettings: _*)
+      .settings(publishSettings(): _*)
       .settings(defaultScalariformSettings: _*)
       .settings(sonatypePublishSettings: _*)
       .settings(mimaDefaultSettings: _*)
@@ -219,7 +220,7 @@ object BuildSettings {
     Project(name, file("src/" + dir))
       .disablePlugins(Sonatype)
       .settings(playCommonSettings: _*)
-      .settings((if (publishNonCoreScalaLibraries) Nil else dontPublishSettings): _*)
+      .settings((if (publishNonCoreScalaLibraries) publishSettings() else dontPublishSettings): _*)
       .settings(defaultScalariformSettings: _*)
       .settings(
         bintrayOrganization := Some("playframework"),
@@ -416,7 +417,7 @@ object PlayBuild extends Build {
           d.organization + ":" + d.name + ":" + d.revision
         }.sorted.foreach(println)
       },
-      publishTo := Some(publishingIvyRepository),
+//      publishTo := Some(publishingIvyRepository),
       // Must be false, because due to the way SBT integrates with test libraries, and the way SBT uses Java object
       // serialisation to communicate with forked processes, and because this plugin will have SBT 0.13 on the forked
       // processes classpath while it's actually being run by SBT 0.12... if it forks you get serialVersionUID errors.
