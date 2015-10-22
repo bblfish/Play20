@@ -23,7 +23,7 @@ object Dependencies {
 
   val jdbcDeps = Seq(
     "com.jolbox" % "bonecp" % "0.8.0.RELEASE",
-    h2database, 
+    h2database,
     "org.eu.acolyte" % "jdbc-driver" % "1.0.22" % "test",
     "tyrex" % "tyrex" % "1.0.1") ++ specsBuild.map(_ % "test")
 
@@ -58,7 +58,7 @@ object Dependencies {
     ("org.springframework" % "spring-beans" % "4.0.3.RELEASE" notTransitive ())
       .exclude("org.springframework", "spring-core"),
 
-    "org.javassist" % "javassist" % "3.18.2-GA",
+    "org.javassist" % "javassist" % "3.19.0-GA",
 
     ("org.reflections" % "reflections" % "0.9.8" notTransitive ())
       .exclude("javassist", "javassist"),
@@ -76,7 +76,7 @@ object Dependencies {
     mockitoAll % "test")
 
   val runtime = Seq(
-    "io.netty" % "netty" % "3.9.3.Final",
+    "io.netty" % "netty" % "3.9.9.Final",
 
     "com.typesafe.netty" % "netty-http-pipelining" % "1.1.2",
 
@@ -127,9 +127,47 @@ object Dependencies {
     )
   }
 
- val runSupportDependencies = Seq(
-    "org.scala-sbt" % "io" % BuildSettings.buildSbtVersion
+  def runSupportDependencies(scalaBinaryVersion: String) = Seq(
+    sbtIO(scalaBinaryVersion)
   ) ++ specsBuild.map(_ % Test)
+
+  // use partial version so that non-standard scala binary versions from dbuild also work
+  def sbtIO(scalaBinaryVersion: String): ModuleID = CrossVersion.partialVersion(scalaBinaryVersion) match {
+    case Some((2, major)) if major >= 11 => "org.scala-sbt" %% "io" % "0.13.6" % "provided"
+    case _ => "org.scala-sbt" % "io" % BuildSettings.buildSbtVersion % "provided"
+  }
+
+  val jnotify = "net.contentobjects.jnotify" % "jnotify" % "0.94"
+
+  val sbtRcVersion = "0.3.1"
+  val sbtCoreNextVersion = "0.1.1"
+
+  def forkRunProtocolDependencies(scalaBinaryVersion: String) = Seq(
+    sbtRcClient(scalaBinaryVersion)
+  ) ++ specsBuild.map(_ % "test")
+
+  // use partial version so that non-standard scala binary versions from dbuild also work
+  def sbtRcClient(scalaBinaryVersion: String): ModuleID = CrossVersion.partialVersion(scalaBinaryVersion) match {
+    case Some((2, 10)) => "com.typesafe.sbtrc" % "client-2-10" % sbtRcVersion
+    case Some((2, 11)) => "com.typesafe.sbtrc" % "client-2-11" % sbtRcVersion
+    case _ => sys.error(s"Unsupported scala version: $scalaBinaryVersion")
+  }
+
+  def forkRunDependencies(scalaBinaryVersion: String) = Seq(
+    sbtRcActorClient(scalaBinaryVersion),
+    jnotify
+  )
+
+  // use partial version so that non-standard scala binary versions from dbuild also work
+  def sbtRcActorClient(scalaBinaryVersion: String): ModuleID = CrossVersion.partialVersion(scalaBinaryVersion) match {
+    case Some((2, 10)) => "com.typesafe.sbtrc" % "actor-client-2-10" % sbtRcVersion
+    case Some((2, 11)) => "com.typesafe.sbtrc" % "actor-client-2-11" % sbtRcVersion
+    case _ => sys.error(s"Unsupported scala version: $scalaBinaryVersion")
+  }
+
+  def sbtForkRunPluginDependencies = Seq(
+    sbtPluginDep("org.scala-sbt" % "sbt-core-next" % sbtCoreNextVersion)
+  )
 
   val typesafeConfig = "com.typesafe" % "config" % "1.2.1"
 
@@ -150,11 +188,11 @@ object Dependencies {
     h2database,
     "org.javassist" % "javassist" % "3.18.2-GA",
 
-    "net.contentobjects.jnotify" % "jnotify" % "0.94",
+    jnotify,
 
     sbtPluginDep("com.typesafe.sbt" % "sbt-twirl" % "1.0.2"),
 
-    sbtPluginDep("com.typesafe.sbteclipse" % "sbteclipse-plugin" % "2.4.0"),
+    sbtPluginDep("com.typesafe.sbteclipse" % "sbteclipse-plugin" % "3.0.0"),
     sbtPluginDep("com.github.mpeltonen" % "sbt-idea" % "1.5.1"),
     sbtPluginDep("com.typesafe.sbt" % "sbt-native-packager" % "0.7.4"),
 
@@ -204,7 +242,7 @@ object Dependencies {
 
   val playWsDeps = Seq(
     guava,
-    "com.ning" % "async-http-client" % "1.8.14",
+    "com.ning" % "async-http-client" % "1.8.15",
     "oauth.signpost" % "signpost-core" % "1.2.1.2",
     "oauth.signpost" % "signpost-commonshttp4" % "1.2.1.2") ++
     specsBuild.map(_ % "test") :+

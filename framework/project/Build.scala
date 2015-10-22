@@ -1,12 +1,18 @@
 /*
  * Copyright (C) 2009-2013 Typesafe Inc. <http://www.typesafe.com>
  */
+
+import bintray.BintrayPlugin
+import bintray.BintrayPlugin.autoImport._
 import sbt._
 import Keys._
 import com.typesafe.tools.mima.plugin.MimaPlugin.mimaDefaultSettings
 import com.typesafe.tools.mima.plugin.MimaKeys.{previousArtifact, binaryIssueFilters, reportBinaryIssues}
 import com.typesafe.tools.mima.core._
 import com.typesafe.sbt.SbtScalariform.defaultScalariformSettings
+import com.typesafe.sbt.pgp.PgpKeys
+import xerial.sbt.Sonatype
+import xerial.sbt.Sonatype.autoImport._
 import scala.util.Properties.isJavaAtLeast
 import play.twirl.sbt.SbtTwirl
 import play.twirl.sbt.Import.TwirlKeys
@@ -49,19 +55,6 @@ object BuildSettings {
 
   lazy val PerformanceTest = config("pt") extend(Test)
 
-  class SharedProjectScalaVersion(val scalaVersion: String, val targetDir: String) {
-    val nameSuffix:String = targetDir.replace(".","").trim()
-    def toSettings(targetPrefix:String):Seq[Setting[_]] = Seq(
-      target := target.value / s"$targetPrefix-$targetDir",
-      Keys.scalaVersion := scalaVersion
-    )
-  }
-
-  object SharedProjectScalaVersion {
-    def forScalaVersion(scalaVersion:String):SharedProjectScalaVersion =
-      new SharedProjectScalaVersion(scalaVersion,CrossVersion.binaryScalaVersion(scalaVersion))
-  }
-
   val playCommonSettings = Seq(
     organization := buildOrganization,
     version := buildVersion,
@@ -79,7 +72,21 @@ object BuildSettings {
     testOptions += Tests.Argument(TestFrameworks.JUnit, "-v"),
     testOptions in Test += Tests.Filter(!_.endsWith("Benchmark")),
     testOptions in PerformanceTest ~= (_.filterNot(_.isInstanceOf[Tests.Filter]) :+ Tests.Filter(_.endsWith("Benchmark"))),
-    parallelExecution in PerformanceTest := false
+    parallelExecution in PerformanceTest := false,
+    pomExtra := {
+      <scm>
+        <url>https://github.com/playframework/playframework</url>
+        <connection>scm:git:git@github.com:playframework/playframework.git</connection>
+      </scm>
+        <developers>
+          <developer>
+            <id>playframework</id>
+            <name>Play Framework Team</name>
+            <url>https://github.com/playframework</url>
+          </developer>
+        </developers>
+    },
+    pomIncludeRepository := { _ => false }
   )
 
   def makeJavacOptions(version: String) = Seq("-source", version, "-target", version, "-encoding", "UTF-8", "-Xlint:-options")
@@ -92,13 +99,17 @@ object BuildSettings {
      *
      * So, to disable publishing for the 2.11 build, we simply publish to a dummy repo instead of to the real thing.
      */
-    publishTo := Some(Resolver.file("Unused transient repository", file("target/unusedrepo")))
+    publishTo := Some(Resolver.file("Unused transient repository", file("target/unusedrepo"))),
+    publish := (),
+    publishLocal := (),
+    PgpKeys.publishSigned := ()
   )
-//  val publishSettings = Seq(
-//    publishArtifact in packageDoc := buildWithDoc,
-//    publishArtifact in (Compile, packageSrc) := true,
-//    publishTo := Some(publishingMavenRepository)
-//  )
+
+  val sonatypePublishSettings = Seq(
+    publishArtifact in packageDoc := buildWithDoc,
+    publishArtifact in (Compile, packageSrc) := true,
+    sonatypeProfileName := "com.typesafe"
+  )
 
   //sbt -Dbanana.publish=bblfish.net:/home/hjs/htdocs/work/repo/
   //sbt -Dbanana.publish=bintray
@@ -145,6 +156,7 @@ object BuildSettings {
       Seq(previousArtifact := Some(buildOrganization % moduleName.value % previousVersion))
     } else Nil)
     Project(name, file("src/" + dir))
+      .disablePlugins(BintrayPlugin)
       .configs(PerformanceTest)
       .settings(inConfig(PerformanceTest)(Defaults.testTasks) : _*)
       .settings(playCommonSettings: _*)
@@ -158,12 +170,15 @@ object BuildSettings {
       )
   }
 
-  def PlaySharedRuntimeProject(name: String, dir: String, targetPrefix:String, scalaVersion: SharedProjectScalaVersion, additionalSettings:Seq[Setting[_]]): Project = {
+  /**
+   * A project that is only used when running in development.
+   */
+  def PlayDevelopmentProject(name: String, dir: String): Project = {
     Project(name, file("src/" + dir))
+      .disablePlugins(BintrayPlugin)
       .settings(playCommonSettings: _*)
       .settings(defaultScalariformSettings: _*)
-      .settings(scalaVersion.toSettings(targetPrefix): _*)
-      .settings(additionalSettings: _*)
+      .settings(sonatypePublishSettings: _*)
       .settings(mimaDefaultSettings: _*)
   }
 
@@ -172,6 +187,7 @@ object BuildSettings {
    */
   def PlayRuntimeProject(name: String, dir: String): Project = {
     Project(name, file("src/" + dir))
+      .disablePlugins(BintrayPlugin)
       .configs(PerformanceTest)
       .settings(inConfig(PerformanceTest)(Defaults.testTasks) : _*)
       .settings(playCommonSettings: _*)
@@ -189,10 +205,27 @@ object BuildSettings {
 
   def PlaySbtProject(name: String, dir: String): Project = {
     Project(name, file("src/" + dir))
+      .disablePlugins(BintrayPlugin)
       .settings(playCommonSettings: _*)
       .settings((if (publishNonCoreScalaLibraries) publishSettings() else dontPublishSettings): _*)
       .settings(defaultScalariformSettings: _*)
       .settings(
+        scalaVersion := buildScalaVersionForSbt,
+        scalaBinaryVersion := CrossVersion.binaryScalaVersion(buildScalaVersionForSbt),
+        scalacOptions ++= Seq("-encoding", "UTF-8", "-Xlint", "-deprecation", "-unchecked"))
+  }
+
+  def PlaySbtPluginProject(name: String, dir: String): Project = {
+    Project(name, file("src/" + dir))
+      .disablePlugins(Sonatype)
+      .settings(playCommonSettings: _*)
+      .settings((if (publishNonCoreScalaLibraries) Nil else dontPublishSettings): _*)
+      .settings(defaultScalariformSettings: _*)
+      .settings(
+        bintrayOrganization := Some("playframework"),
+        bintrayRepository := "sbt-plugin-releases",
+        bintrayPackage := "play-sbt-plugin",
+        bintrayReleaseOnPublish := false,
         scalaVersion := buildScalaVersionForSbt,
         scalaBinaryVersion := CrossVersion.binaryScalaVersion(buildScalaVersionForSbt),
         scalacOptions ++= Seq("-encoding", "UTF-8", "-Xlint", "-deprecation", "-unchecked"))
@@ -258,14 +291,16 @@ object PlayBuild extends Build {
     .settings(libraryDependencies ++= link)
     .dependsOn(PlayExceptionsProject)
 
-  def runSupportProject(prefix:String, sv:SharedProjectScalaVersion, additionalSettings: Seq[Setting[_]]) =
-    PlaySharedRuntimeProject(prefix, "run-support", prefix, sv, additionalSettings).settings(
-      libraryDependencies ++= runSupportDependencies
-    )
+  lazy val RunSupportProject = PlayDevelopmentProject("Run-Support", "run-support")
+    .settings(libraryDependencies ++= runSupportDependencies(scalaBinaryVersion.value))
+    .dependsOn(BuildLinkProject)
 
-  lazy val SbtRunSupportProject = runSupportProject("SBT-Run-Support",SharedProjectScalaVersion.forScalaVersion(buildScalaVersionForSbt),(if (publishNonCoreScalaLibraries) publishSettings() else dontPublishSettings))
-
-  lazy val RunSupportProject = runSupportProject("Run-Support", SharedProjectScalaVersion.forScalaVersion(buildScalaVersion),publishSettings())
+  // extra run-support project that is only compiled against sbt scala version
+  lazy val SbtRunSupportProject = PlaySbtProject("SBT-Run-Support", "run-support")
+    .settings(
+      target := target.value / "sbt-run-support",
+      libraryDependencies ++= runSupportDependencies(scalaBinaryVersion.value)
+    ).dependsOn(BuildLinkProject)
 
   lazy val RoutesCompilerProject = PlaySbtProject("Routes-Compiler", "routes-compiler")
     .settings(libraryDependencies ++= routersCompilerDependencies)
@@ -313,7 +348,7 @@ object PlayBuild extends Build {
         ProblemFilters.exclude[IncompatibleResultTypeProblem]("controllers.Assets.controllers$Assets$$assetInfoFromResource")
       )
 
-    ).dependsOn(BuildLinkProject, PlayExceptionsProject, IterateesProject % "test->test;compile->compile", JsonProject)
+    ).dependsOn(BuildLinkProject, IterateesProject % "test->test;compile->compile", JsonProject)
 
   lazy val PlayJdbcProject = PlayRuntimeProject("Play-JDBC", "play-jdbc")
     .settings(libraryDependencies ++= jdbcDeps)
@@ -365,7 +400,7 @@ object PlayBuild extends Build {
 
   import ScriptedPlugin._
 
-  lazy val SbtPluginProject = PlaySbtProject("SBT-Plugin", "sbt-plugin")
+  lazy val SbtPluginProject = PlaySbtPluginProject("SBT-Plugin", "sbt-plugin")
     .settings(
       sbtPlugin := true,
       publishMavenStyle := false,
@@ -387,28 +422,60 @@ object PlayBuild extends Build {
       // processes classpath while it's actually being run by SBT 0.12... if it forks you get serialVersionUID errors.
       fork in Test := false
     ).settings(scriptedSettings: _*)
-    .settings(publishSettings(false): _*)
     .settings(
       scriptedLaunchOpts ++= Seq(
         "-XX:MaxPermSize=384M",
         "-Dperformance.log=" + new File(baseDirectory.value, "target/sbt-repcomile-performance.properties"),
         "-Dproject.version=" + version.value
       ),
+      /* The project does not publish all of the artifacts it needs for scripted tests as there is
+       * an assumed order of testing operations.
+       *
+       * From @pvlugter:
+       * The play docs project in particular takes a while to rebuild. The runtests script already
+       * publishes everything locally as a first step (including scala cross build), so this just
+       * lengthens the validation time. So when developing sbt plugins the idea is to publishLocal
+       * everything first and have the scripted test just publishLocal the plugin parts themselves -
+       * basically those parts that will be changing when working on the plugin.
+       */
       scriptedDependencies := {
         val () = publishLocal.value
-        val () = (publishLocal in BuildLinkProject).value
-        val () = (publishLocal in PlayExceptionsProject).value
         val () = (publishLocal in RoutesCompilerProject).value
-        val () = (publishLocal in SbtRunSupportProject).value
-        val () = (publishLocal in PlayTestProject).value
-        val () = (publishLocal in PlayDocsProject).value
-        val () = (publishLocal in PlayProject).value
-        val () = (publishLocal in JsonProject).value
-        val () = (publishLocal in IterateesProject).value
-        val () = (publishLocal in FunctionalProject).value
-        val () = (publishLocal in DataCommonsProject).value
       }
-    ).dependsOn(BuildLinkProject, PlayExceptionsProject, RoutesCompilerProject, SbtRunSupportProject)
+    ).dependsOn(RoutesCompilerProject, SbtRunSupportProject)
+
+  lazy val ForkRunProtocolProject = PlayDevelopmentProject("Fork-Run-Protocol", "fork-run-protocol")
+    .settings(libraryDependencies ++= forkRunProtocolDependencies(scalaBinaryVersion.value))
+    .dependsOn(RunSupportProject)
+
+  // extra fork-run-protocol project that is only compiled against sbt scala version
+  lazy val SbtForkRunProtocolProject = PlaySbtProject("SBT-Fork-Run-Protocol", "fork-run-protocol")
+    .settings(
+      target := target.value / "sbt-fork-run-protocol",
+      libraryDependencies ++= forkRunProtocolDependencies(scalaBinaryVersion.value))
+    .dependsOn(SbtRunSupportProject)
+
+  lazy val ForkRunProject = PlayDevelopmentProject("Fork-Run", "fork-run")
+    .settings(libraryDependencies ++= forkRunDependencies(scalaBinaryVersion.value))
+    .dependsOn(ForkRunProtocolProject)
+
+  lazy val SbtForkRunPluginProject = PlaySbtPluginProject("SBT-Fork-Run-Plugin", "sbt-fork-run-plugin")
+    .settings(
+      sbtPlugin := true,
+      publishMavenStyle := false,
+      libraryDependencies ++= sbtForkRunPluginDependencies)
+    .settings(scriptedSettings: _*)
+    .settings(
+      scriptedLaunchOpts ++= Seq(
+        "-XX:MaxPermSize=384M",
+        "-Dproject.version=" + version.value
+      ),
+      scriptedDependencies := {
+        val () = publishLocal.value
+        val () = (publishLocal in SbtPluginProject).value
+        val () = (publishLocal in RoutesCompilerProject).value
+      })
+    .dependsOn(SbtForkRunProtocolProject, SbtPluginProject)
 
   lazy val PlayWsProject = PlayRuntimeProject("Play-WS", "play-ws")
     .settings(
@@ -456,6 +523,7 @@ object PlayBuild extends Build {
   import RepositoryBuilder._
   lazy val RepositoryProject = Project(
       "Play-Repository", file("repository"))
+    .disablePlugins(Sonatype, BintrayPlugin)
     .settings(dontPublishSettings:_*)
     .settings(localRepoCreationSettings:_*)
     .settings(mimaDefaultSettings: _*)
@@ -472,7 +540,7 @@ object PlayBuild extends Build {
       )
     )
 
-  lazy val PlayDocsSbtPlugin = PlaySbtProject("Play-Docs-SBT-Plugin", "play-docs-sbt-plugin")
+  lazy val PlayDocsSbtPlugin = PlaySbtPluginProject("Play-Docs-SBT-Plugin", "play-docs-sbt-plugin")
     .settings(
       sbtPlugin := true,
       publishMavenStyle := false,
@@ -509,6 +577,10 @@ object PlayBuild extends Build {
     SbtRunSupportProject,
     RunSupportProject,
     SbtPluginProject,
+    ForkRunProtocolProject,
+    SbtForkRunProtocolProject,
+    ForkRunProject,
+    SbtForkRunPluginProject,
     PlayTestProject,
     PlayExceptionsProject,
     PlayDocsProject,
@@ -520,6 +592,7 @@ object PlayBuild extends Build {
   lazy val Root = Project(
     "Root",
     file("."))
+    .disablePlugins(Sonatype, BintrayPlugin)
     .settings(playCommonSettings: _*)
     .settings(dontPublishSettings:_*)
     .settings(
